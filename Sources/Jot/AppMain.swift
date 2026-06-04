@@ -1,8 +1,15 @@
 import SwiftUI
 import AppKit
 
+final class JotAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+}
+
 @main
 struct JotApp: App {
+    @NSApplicationDelegateAdaptor(JotAppDelegate.self) private var appDelegate
     @StateObject private var settings: JotSettings
     @StateObject private var store: DocumentStore
     @StateObject private var tree: FileTreeStore
@@ -15,7 +22,7 @@ struct JotApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        Window("Jot", id: "main") {
             ContentView()
                 .environmentObject(store)
                 .environmentObject(tree)

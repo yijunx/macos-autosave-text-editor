@@ -18,6 +18,15 @@ struct FileTreeView: View {
                     .help(tree.root.path)
                 Spacer()
                 Button {
+                    store.newDocument()
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("New file (⌘N)")
+                Button {
                     tree.refresh()
                 } label: {
                     Image(systemName: "arrow.clockwise")

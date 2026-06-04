@@ -104,12 +104,18 @@ struct WebPreviewView: NSViewRepresentable {
             guard message.name == "scroll",
                   let value = message.body as? Double else { return }
             if ignoreIncomingScroll > 0 { return }
+            if isHTMLMode { return }
             let cg = CGFloat(value)
             guard let doc = doc else { return }
             if abs(doc.scrollFraction - cg) > 0.002 {
                 doc.scrollFraction = cg
                 lastFraction = cg
             }
+        }
+
+        private var isHTMLMode: Bool {
+            let ext = doc?.fileURL?.pathExtension.lowercased() ?? ""
+            return ext == "html" || ext == "htm"
         }
 
         func pushContent(_ payload: Payload, resetScroll: Bool) {
@@ -129,6 +135,7 @@ struct WebPreviewView: NSViewRepresentable {
 
         func applyScroll(_ fraction: CGFloat) {
             guard let webView = webView else { return }
+            if isHTMLMode { return }
             ignoreIncomingScroll += 1
             webView.evaluateJavaScript("applyScroll(\(fraction));", completionHandler: nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in

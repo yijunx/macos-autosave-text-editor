@@ -26,7 +26,25 @@ struct ContentView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .navigation) {
+                    Button {
+                        store.newDocument()
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                    }
+                    .help("New file (⌘N)")
+                }
+                ToolbarItem(placement: .principal) {
+                    Text(store.activeDocument?.displayName ?? "Jot")
+                        .font(.system(.body).weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 360)
+                }
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if let doc = store.activeDocument, isHTML(doc) {
+                        ContentsOnlyToggle(doc: doc)
+                    }
                     Button {
                         showPreview.toggle()
                     } label: {
@@ -38,6 +56,23 @@ struct ContentView: View {
             }
         }
         .navigationTitle(store.activeDocument?.displayName ?? "Jot")
+    }
+
+    private func isHTML(_ doc: EditorDocument) -> Bool {
+        let ext = doc.fileURL?.pathExtension.lowercased() ?? ""
+        return ext == "html" || ext == "htm"
+    }
+}
+
+struct ContentsOnlyToggle: View {
+    @ObservedObject var doc: EditorDocument
+
+    var body: some View {
+        Toggle(isOn: $doc.contentsOnly) {
+            Label("Contents only", systemImage: "text.alignleft")
+        }
+        .toggleStyle(.button)
+        .help("Hide HTML tags so just the content shows")
     }
 }
 
@@ -99,10 +134,20 @@ struct EditorView: View {
     @ObservedObject var doc: EditorDocument
 
     var body: some View {
-        CodeEditorView(text: $doc.content, scrollFraction: $doc.scrollFraction)
-            .background(Color(NSColor.textBackgroundColor))
-            .onChange(of: doc.content) { _, _ in
-                doc.scheduleSave(folder: store.folder)
-            }
+        CodeEditorView(
+            text: $doc.content,
+            scrollFraction: $doc.scrollFraction,
+            hideTags: shouldHideTags
+        )
+        .background(Color(NSColor.textBackgroundColor))
+        .onChange(of: doc.content) { _, _ in
+            doc.scheduleSave(folder: store.folder)
+        }
+    }
+
+    private var shouldHideTags: Bool {
+        guard doc.contentsOnly else { return false }
+        let ext = doc.fileURL?.pathExtension.lowercased() ?? ""
+        return ext == "html" || ext == "htm"
     }
 }

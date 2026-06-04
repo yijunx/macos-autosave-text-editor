@@ -12,6 +12,7 @@ final class EditorDocument: ObservableObject, Identifiable {
     @Published var displayName: String = "Untitled"
     @Published var fileURL: URL? = nil
     @Published var scrollFraction: CGFloat = 0
+    @Published var contentsOnly: Bool = false
     private var saveTask: DispatchWorkItem?
 
     func scheduleSave(folder: URL) {
