@@ -13,6 +13,7 @@ final class EditorDocument: ObservableObject, Identifiable {
     @Published var fileURL: URL? = nil
     @Published var scrollFraction: CGFloat = 0
     @Published var contentsOnly: Bool = false
+    private var pendingName: String? = nil
     private var saveTask: DispatchWorkItem?
 
     func scheduleSave(folder: URL) {
@@ -38,7 +39,13 @@ final class EditorDocument: ObservableObject, Identifiable {
         if fileURL == nil {
             let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
-            let baseName = DocumentStore.deriveFilename(from: content)
+            let baseName: String
+            if let pending = pendingName, !pending.isEmpty {
+                baseName = pending
+                pendingName = nil
+            } else {
+                baseName = DocumentStore.deriveFilename(from: content)
+            }
             let url = DocumentStore.uniqueURL(in: folder, baseName: baseName, ext: "md")
             fileURL = url
             displayName = url.lastPathComponent
@@ -59,6 +66,7 @@ final class EditorDocument: ObservableObject, Identifiable {
         let cleaned = DocumentStore.sanitize(newName)
         guard !cleaned.isEmpty else { return }
         guard let oldURL = fileURL else {
+            pendingName = cleaned
             displayName = cleaned + ".md"
             return
         }
@@ -158,10 +166,77 @@ final class DocumentStore: ObservableObject {
     }
 
     static func deriveFilename(from content: String) -> String {
-        let firstLine = content.split(whereSeparator: { $0.isNewline }).first.map(String.init) ?? ""
-        let head = String(firstLine.prefix(60)).trimmingCharacters(in: .whitespaces)
-        let slug = sanitize(head)
-        return slug.isEmpty ? "untitled" : slug
+        let lines = content.components(separatedBy: "\n")
+        var startIndex = 0
+
+        // YAML frontmatter: if the first non-blank line is `---`, look for a closing
+        // `---`. Prefer a `name:` or `title:` field inside; otherwise skip the block.
+        if let first = lines.first, first.trimmingCharacters(in: .whitespaces) == "---" {
+            var closing: Int? = nil
+            var i = 1
+            while i < lines.count {
+                if lines[i].trimmingCharacters(in: .whitespaces) == "---" {
+                    closing = i
+                    break
+                }
+                i += 1
+            }
+            if let c = closing {
+                for j in 1..<c {
+                    if let v = parseYAMLField(lines[j], key: "name")
+                        ?? parseYAMLField(lines[j], key: "title") {
+                        let slug = sanitize(v)
+                        if !slug.isEmpty { return slug }
+                    }
+                }
+                startIndex = c + 1
+            }
+        }
+
+        // Walk to the first line with real content; strip leading markdown markers.
+        for i in startIndex..<lines.count {
+            let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            if trimmed == "---" || trimmed == "***" || trimmed == "___" { continue }
+            let stripped = stripMarkdownPrefix(trimmed)
+            let head = String(stripped.prefix(60)).trimmingCharacters(in: .whitespaces)
+            let slug = sanitize(head)
+            if !slug.isEmpty { return slug }
+        }
+
+        return "untitled"
+    }
+
+    private static func parseYAMLField(_ line: String, key: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let prefix = key + ":"
+        guard trimmed.lowercased().hasPrefix(prefix) else { return nil }
+        var value = String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        if value.count >= 2,
+           (value.hasPrefix("\"") && value.hasSuffix("\""))
+               || (value.hasPrefix("'") && value.hasSuffix("'")) {
+            value = String(value.dropFirst().dropLast())
+        }
+        return value.isEmpty ? nil : value
+    }
+
+    private static func stripMarkdownPrefix(_ s: String) -> String {
+        var t = s
+        while t.hasPrefix("#") { t = String(t.dropFirst()) }
+        t = t.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("- ") || t.hasPrefix("* ") || t.hasPrefix("+ ") || t.hasPrefix("> ") {
+            return String(t.dropFirst(2))
+        }
+        // `N. ` ordered list
+        if let dot = t.firstIndex(of: "."),
+           dot > t.startIndex,
+           t[..<dot].allSatisfy({ $0.isNumber }) {
+            let afterDot = t.index(after: dot)
+            if afterDot < t.endIndex, t[afterDot] == " " {
+                return String(t[t.index(after: afterDot)...])
+            }
+        }
+        return t
     }
 
     static func sanitize(_ s: String) -> String {

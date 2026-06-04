@@ -35,11 +35,7 @@ struct ContentView: View {
                     .help("New file (⌘N)")
                 }
                 ToolbarItem(placement: .principal) {
-                    Text(store.activeDocument?.displayName ?? "Jot")
-                        .font(.system(.body).weight(.semibold))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 360)
+                    PrincipalTitle()
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
                     if let doc = store.activeDocument, isHTML(doc) {
@@ -55,7 +51,6 @@ struct ContentView: View {
                 }
             }
         }
-        .navigationTitle(store.activeDocument?.displayName ?? "Jot")
     }
 
     private func isHTML(_ doc: EditorDocument) -> Bool {
@@ -73,6 +68,82 @@ struct ContentsOnlyToggle: View {
         }
         .toggleStyle(.button)
         .help("Hide HTML tags so just the content shows")
+    }
+}
+
+struct PrincipalTitle: View {
+    @EnvironmentObject var store: DocumentStore
+
+    var body: some View {
+        if let doc = store.activeDocument {
+            EditableTitle(doc: doc)
+        } else {
+            Text("Jot")
+                .font(.system(.body).weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 360)
+        }
+    }
+}
+
+struct EditableTitle: View {
+    @ObservedObject var doc: EditorDocument
+    @State private var editing = false
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if editing {
+                TextField("", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(.body).weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .focused($focused)
+                    .frame(minWidth: 120, maxWidth: 320)
+                    .onAppear { focused = true }
+                    .onSubmit { commit() }
+                    .onExitCommand { editing = false }
+                    .onChange(of: focused) { _, isFocused in
+                        if !isFocused && editing { commit() }
+                    }
+            } else {
+                Text(doc.displayName)
+                    .font(.system(.body).weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 320)
+            }
+            Button {
+                if editing { commit() } else { begin() }
+            } label: {
+                Image(systemName: editing ? "checkmark" : "pencil")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(editing ? "Save name" : "Rename file")
+        }
+    }
+
+    private func begin() {
+        if let url = doc.fileURL {
+            draft = url.deletingPathExtension().lastPathComponent
+        } else if doc.displayName == "Untitled" {
+            draft = ""
+        } else {
+            draft = (doc.displayName as NSString).deletingPathExtension
+        }
+        editing = true
+    }
+
+    private func commit() {
+        let trimmed = draft.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty {
+            doc.rename(to: trimmed)
+        }
+        editing = false
     }
 }
 
