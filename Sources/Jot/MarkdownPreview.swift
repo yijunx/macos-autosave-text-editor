@@ -25,6 +25,7 @@ struct MarkdownPreviewView: View {
             .padding(.horizontal, 20)
             .padding(.top, 20)
             .padding(.bottom, 60)
+            .textSelection(.enabled)
         }
         .background(Color(NSColor.textBackgroundColor))
     }

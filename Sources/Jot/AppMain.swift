@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @main
 struct JotApp: App {
@@ -18,16 +19,32 @@ struct JotApp: App {
                     .keyboardShortcut("n", modifiers: .command)
             }
             CommandGroup(after: .newItem) {
-                Button("Close Tab") { store.closeActive() }
+                Button("Close File") { store.closeActive() }
                     .keyboardShortcut("w", modifiers: .command)
                 Divider()
-                Button("Next Tab") { store.next() }
-                    .keyboardShortcut("]", modifiers: [.command, .shift])
-                Button("Previous Tab") { store.previous() }
-                    .keyboardShortcut("[", modifiers: [.command, .shift])
                 Button("Reveal in Finder") { store.revealActive() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
             }
+            CommandGroup(after: .textEditing) {
+                Section {
+                    Button("Find…") { sendFinderAction(.showFindInterface) }
+                        .keyboardShortcut("f", modifiers: .command)
+                    Button("Find Next") { sendFinderAction(.nextMatch) }
+                        .keyboardShortcut("g", modifiers: .command)
+                    Button("Find Previous") { sendFinderAction(.previousMatch) }
+                        .keyboardShortcut("g", modifiers: [.command, .shift])
+                }
+            }
         }
     }
+}
+
+private func sendFinderAction(_ action: NSTextFinder.Action) {
+    let menuItem = NSMenuItem()
+    menuItem.tag = action.rawValue
+    NSApp.sendAction(
+        #selector(NSResponder.performTextFinderAction(_:)),
+        to: nil,
+        from: menuItem
+    )
 }

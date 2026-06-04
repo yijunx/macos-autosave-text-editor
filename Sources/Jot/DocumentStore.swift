@@ -79,8 +79,7 @@ final class EditorDocument: ObservableObject, Identifiable {
 }
 
 final class DocumentStore: ObservableObject {
-    @Published var documents: [EditorDocument] = []
-    @Published var activeID: UUID?
+    @Published var activeDocument: EditorDocument? = nil
 
     var folder: URL {
         let formatter = DateFormatter()
@@ -92,60 +91,29 @@ final class DocumentStore: ObservableObject {
     }
 
     func newDocument() {
-        let doc = EditorDocument()
-        documents.append(doc)
-        activeID = doc.id
+        activeDocument?.saveNow(folder: folder)
+        activeDocument = EditorDocument()
     }
 
     func openFile(at url: URL) {
-        if let existing = documents.first(where: { $0.fileURL == url }) {
-            activeID = existing.id
-            return
-        }
+        if activeDocument?.fileURL == url { return }
+        activeDocument?.saveNow(folder: folder)
         let doc = EditorDocument()
         doc.fileURL = url
         doc.displayName = url.deletingPathExtension().lastPathComponent
         if let content = try? String(contentsOf: url, encoding: .utf8) {
             doc.content = content
         }
-        documents.append(doc)
-        activeID = doc.id
+        activeDocument = doc
     }
 
     func closeActive() {
-        guard let id = activeID else { return }
-        close(id: id)
-    }
-
-    func close(id: UUID) {
-        guard let idx = documents.firstIndex(where: { $0.id == id }) else { return }
-        let doc = documents[idx]
-        doc.saveNow(folder: folder)
-        documents.remove(at: idx)
-        if activeID == id {
-            if documents.isEmpty {
-                activeID = nil
-            } else {
-                activeID = documents[max(0, idx - 1)].id
-            }
-        }
-    }
-
-    func next() {
-        guard let id = activeID, let idx = documents.firstIndex(where: { $0.id == id }) else { return }
-        activeID = documents[(idx + 1) % documents.count].id
-    }
-
-    func previous() {
-        guard let id = activeID, let idx = documents.firstIndex(where: { $0.id == id }) else { return }
-        let prev = (idx - 1 + documents.count) % documents.count
-        activeID = documents[prev].id
+        activeDocument?.saveNow(folder: folder)
+        activeDocument = nil
     }
 
     func revealActive() {
-        guard let id = activeID,
-              let doc = documents.first(where: { $0.id == id }),
-              let url = doc.fileURL else { return }
+        guard let url = activeDocument?.fileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 

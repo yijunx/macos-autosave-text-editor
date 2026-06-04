@@ -97,9 +97,7 @@ struct FileRow: View {
     let depth: Int
 
     var isActive: Bool {
-        guard let id = store.activeID,
-              let doc = store.documents.first(where: { $0.id == id }) else { return false }
-        return doc.fileURL == url
+        store.activeDocument?.fileURL == url
     }
 
     var body: some View {
