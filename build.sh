@@ -25,6 +25,13 @@ mkdir -p "$BUNDLE/Contents/Resources"
 cp "$BIN_PATH" "$BUNDLE/Contents/MacOS/$APP_NAME"
 cp "$HERE/Info.plist" "$BUNDLE/Contents/Info.plist"
 
+# Copy any SPM-generated resource bundles (Bundle.module relies on these)
+BIN_DIR="$(swift build -c "$BUILD_CFG" --show-bin-path)"
+for res_bundle in "$BIN_DIR"/*.bundle; do
+    [[ -e "$res_bundle" ]] || continue
+    cp -R "$res_bundle" "$BUNDLE/Contents/Resources/"
+done
+
 # Build the .icns from assets/jot.png
 ICON_SRC="$HERE/assets/jot.png"
 if [[ -f "$ICON_SRC" ]]; then

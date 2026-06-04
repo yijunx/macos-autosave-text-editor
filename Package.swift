@@ -7,7 +7,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Jot",
-            path: "Sources/Jot"
+            path: "Sources/Jot",
+            resources: [
+                .process("Resources")
+            ]
         )
     ]
 )

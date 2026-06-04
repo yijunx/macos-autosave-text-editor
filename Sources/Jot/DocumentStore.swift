@@ -40,7 +40,7 @@ final class EditorDocument: ObservableObject, Identifiable {
             let baseName = DocumentStore.deriveFilename(from: content)
             let url = DocumentStore.uniqueURL(in: folder, baseName: baseName, ext: "md")
             fileURL = url
-            displayName = url.deletingPathExtension().lastPathComponent
+            displayName = url.lastPathComponent
             didCreate = true
         }
         guard let url = fileURL else { return }
@@ -58,19 +58,20 @@ final class EditorDocument: ObservableObject, Identifiable {
         let cleaned = DocumentStore.sanitize(newName)
         guard !cleaned.isEmpty else { return }
         guard let oldURL = fileURL else {
-            displayName = cleaned
+            displayName = cleaned + ".md"
             return
         }
         let folder = oldURL.deletingLastPathComponent()
-        let desired = folder.appendingPathComponent("\(cleaned).md")
+        let ext = oldURL.pathExtension.isEmpty ? "md" : oldURL.pathExtension
+        let desired = folder.appendingPathComponent("\(cleaned).\(ext)")
         if desired == oldURL { return }
         let finalURL = FileManager.default.fileExists(atPath: desired.path)
-            ? DocumentStore.uniqueURL(in: folder, baseName: cleaned, ext: "md")
+            ? DocumentStore.uniqueURL(in: folder, baseName: cleaned, ext: ext)
             : desired
         do {
             try FileManager.default.moveItem(at: oldURL, to: finalURL)
             fileURL = finalURL
-            displayName = finalURL.deletingPathExtension().lastPathComponent
+            displayName = finalURL.lastPathComponent
             NotificationCenter.default.post(name: .jotFilesChanged, object: nil)
         } catch {
             NSLog("Rename failed: %@", String(describing: error))
@@ -100,7 +101,7 @@ final class DocumentStore: ObservableObject {
         activeDocument?.saveNow(folder: folder)
         let doc = EditorDocument()
         doc.fileURL = url
-        doc.displayName = url.deletingPathExtension().lastPathComponent
+        doc.displayName = url.lastPathComponent
         if let content = try? String(contentsOf: url, encoding: .utf8) {
             doc.content = content
         }

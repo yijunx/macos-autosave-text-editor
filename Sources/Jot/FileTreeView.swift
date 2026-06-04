@@ -100,14 +100,32 @@ struct FileRow: View {
         store.activeDocument?.fileURL == url
     }
 
+    private var ext: String { url.pathExtension.lowercased() }
+
+    private var iconName: String {
+        switch ext {
+        case "html", "htm": return "chevron.left.forwardslash.chevron.right"
+        case "md", "markdown": return "doc.text"
+        default: return "doc"
+        }
+    }
+
+    private var iconColor: Color {
+        switch ext {
+        case "html", "htm": return .orange
+        case "md", "markdown": return .blue.opacity(0.85)
+        default: return .secondary
+        }
+    }
+
     var body: some View {
         Button(action: { store.openFile(at: url) }) {
-            HStack(spacing: 4) {
-                Image(systemName: "doc.text")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .frame(width: 10)
-                Text(url.deletingPathExtension().lastPathComponent)
+            HStack(spacing: 5) {
+                Image(systemName: iconName)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(iconColor)
+                    .frame(width: 14, alignment: .center)
+                Text(url.lastPathComponent)
                     .font(.system(size: 12))
                     .lineLimit(1)
                     .truncationMode(.middle)
