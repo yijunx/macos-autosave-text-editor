@@ -20,10 +20,11 @@ struct MarkdownPreviewView: View {
                 ForEach(Array(MarkdownParser.parse(doc.content).enumerated()), id: \.offset) { _, block in
                     blockView(block)
                 }
-                Spacer(minLength: 40)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 60)
         }
         .background(Color(NSColor.textBackgroundColor))
     }
@@ -78,15 +79,18 @@ struct MarkdownPreviewView: View {
                 .background(Color(NSColor.controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
         case .quote(let text):
-            HStack(alignment: .top, spacing: 10) {
-                Rectangle()
-                    .fill(Color.accentColor.opacity(0.55))
-                    .frame(width: 3)
-                Text(inline(text))
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(inline(text))
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 13)
+                .padding(.vertical, 2)
+                .overlay(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.accentColor.opacity(0.55))
+                        .frame(width: 3)
+                }
         case .rule:
             Divider().padding(.vertical, 4)
         }
