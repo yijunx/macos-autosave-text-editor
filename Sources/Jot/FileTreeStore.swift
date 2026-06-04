@@ -1,13 +1,24 @@
 import Foundation
 import SwiftUI
+import Combine
 
 final class FileTreeStore: ObservableObject {
     @Published var root: URL
     @Published var refreshToken = UUID()
+    let settings: JotSettings
+    private var cancellables: Set<AnyCancellable> = []
 
-    init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        self.root = docs
+    init(settings: JotSettings) {
+        self.settings = settings
+        self.root = settings.workingDirectory
+
+        settings.$workingDirectory
+            .sink { [weak self] newURL in
+                self?.root = newURL
+                self?.refreshToken = UUID()
+            }
+            .store(in: &cancellables)
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleChange),

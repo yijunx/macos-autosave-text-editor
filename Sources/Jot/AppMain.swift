@@ -3,15 +3,27 @@ import AppKit
 
 @main
 struct JotApp: App {
-    @StateObject private var store = DocumentStore()
-    @StateObject private var tree = FileTreeStore()
+    @StateObject private var settings: JotSettings
+    @StateObject private var store: DocumentStore
+    @StateObject private var tree: FileTreeStore
+
+    init() {
+        let s = JotSettings()
+        _settings = StateObject(wrappedValue: s)
+        _store = StateObject(wrappedValue: DocumentStore(settings: s))
+        _tree = StateObject(wrappedValue: FileTreeStore(settings: s))
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
                 .environmentObject(tree)
+                .environmentObject(settings)
                 .frame(minWidth: 800, minHeight: 500)
+                .onOpenURL { url in
+                    store.openFile(at: url)
+                }
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -35,6 +47,11 @@ struct JotApp: App {
                         .keyboardShortcut("g", modifiers: [.command, .shift])
                 }
             }
+        }
+
+        Settings {
+            SettingsView()
+                .environmentObject(settings)
         }
     }
 }

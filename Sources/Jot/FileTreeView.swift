@@ -10,9 +10,12 @@ struct FileTreeView: View {
             HStack(spacing: 6) {
                 Image(systemName: "folder")
                     .foregroundColor(.secondary)
-                Text("Documents")
+                Text(tree.root.lastPathComponent)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(tree.root.path)
                 Spacer()
                 Button {
                     tree.refresh()

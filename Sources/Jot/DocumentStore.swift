@@ -81,12 +81,20 @@ final class EditorDocument: ObservableObject, Identifiable {
 
 final class DocumentStore: ObservableObject {
     @Published var activeDocument: EditorDocument? = nil
+    let settings: JotSettings
+
+    init(settings: JotSettings) {
+        self.settings = settings
+    }
+
+    var workingDirectory: URL {
+        settings.workingDirectory
+    }
 
     var folder: URL {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let folder = docs.appendingPathComponent(formatter.string(from: Date()))
+        let folder = workingDirectory.appendingPathComponent(formatter.string(from: Date()))
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder
     }
@@ -97,15 +105,45 @@ final class DocumentStore: ObservableObject {
     }
 
     func openFile(at url: URL) {
-        if activeDocument?.fileURL == url { return }
+        let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+        let workDir = workingDirectory.resolvingSymlinksInPath().standardizedFileURL
+        let inside = resolved.path == workDir.path
+            || resolved.path.hasPrefix(workDir.path + "/")
+
+        let targetURL: URL
+        if inside {
+            targetURL = resolved
+        } else {
+            guard let imported = importExternalFile(from: resolved) else { return }
+            targetURL = imported
+            NotificationCenter.default.post(name: .jotFilesChanged, object: nil)
+        }
+
+        if activeDocument?.fileURL == targetURL { return }
         activeDocument?.saveNow(folder: folder)
         let doc = EditorDocument()
-        doc.fileURL = url
-        doc.displayName = url.lastPathComponent
-        if let content = try? String(contentsOf: url, encoding: .utf8) {
+        doc.fileURL = targetURL
+        doc.displayName = targetURL.lastPathComponent
+        if let content = try? String(contentsOf: targetURL, encoding: .utf8) {
             doc.content = content
         }
         activeDocument = doc
+    }
+
+    private func importExternalFile(from source: URL) -> URL? {
+        let destDir = folder
+        let baseName = source.deletingPathExtension().lastPathComponent
+        let ext = source.pathExtension.isEmpty ? "md" : source.pathExtension
+        let slugged = DocumentStore.sanitize(baseName)
+        let finalBase = slugged.isEmpty ? "imported" : slugged
+        let target = DocumentStore.uniqueURL(in: destDir, baseName: finalBase, ext: ext)
+        do {
+            try FileManager.default.copyItem(at: source, to: target)
+            return target
+        } catch {
+            NSLog("Failed to import %@: %@", source.path, String(describing: error))
+            return nil
+        }
     }
 
     func closeActive() {
