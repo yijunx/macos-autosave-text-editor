@@ -140,7 +140,9 @@ struct ScrollableHosting<Content: View>: NSViewRepresentable {
         self.content = content()
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(scrollFraction: $scrollFraction) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(scrollFraction: $scrollFraction, rootView: content)
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -150,56 +152,91 @@ struct ScrollableHosting<Content: View>: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
 
-        let hosting = NSHostingView(rootView: content)
-        hosting.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.documentView = hosting
-
-        NSLayoutConstraint.activate([
-            hosting.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-            hosting.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor)
-        ])
+        let docView = context.coordinator.controller.view
+        docView.translatesAutoresizingMaskIntoConstraints = true
+        docView.autoresizingMask = []
+        scrollView.documentView = docView
 
         scrollView.contentView.postsBoundsChangedNotifications = true
+        scrollView.contentView.postsFrameChangedNotifications = true
+
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(Coordinator.boundsDidChange(_:)),
             name: NSView.boundsDidChangeNotification,
             object: scrollView.contentView
         )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.viewportDidResize(_:)),
+            name: NSView.frameDidChangeNotification,
+            object: scrollView.contentView
+        )
 
         context.coordinator.scrollView = scrollView
-        context.coordinator.hosting = hosting
+        DispatchQueue.main.async {
+            context.coordinator.resizeContent()
+        }
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.fractionBinding = $scrollFraction
-        context.coordinator.hosting?.rootView = content
+        context.coordinator.controller.rootView = content
 
         let target = scrollFraction
         DispatchQueue.main.async {
+            context.coordinator.resizeContent()
             context.coordinator.applyScrollFraction(target)
         }
     }
 
     final class Coordinator: NSObject {
         var fractionBinding: Binding<CGFloat>
+        let controller: NSHostingController<Content>
         weak var scrollView: NSScrollView?
-        weak var hosting: NSHostingView<Content>?
         var ignoreScrollEvents = 0
+        private var lastDocHeight: CGFloat = 0
 
-        init(scrollFraction: Binding<CGFloat>) {
+        init(scrollFraction: Binding<CGFloat>, rootView: Content) {
             self.fractionBinding = scrollFraction
+            self.controller = NSHostingController(rootView: rootView)
+            super.init()
+        }
+
+        @objc func viewportDidResize(_ notification: Notification) {
+            DispatchQueue.main.async {
+                self.resizeContent()
+                self.applyScrollFraction(self.fractionBinding.wrappedValue)
+            }
+        }
+
+        func resizeContent() {
+            guard let scrollView = scrollView else { return }
+            let viewportSize = scrollView.contentView.bounds.size
+            guard viewportSize.width > 0 else { return }
+
+            let measured = controller.sizeThatFits(in: NSSize(width: viewportSize.width, height: 0))
+            let docHeight = max(measured.height, 1)
+            let targetFrame = NSRect(x: 0, y: 0, width: viewportSize.width, height: docHeight)
+
+            if controller.view.frame != targetFrame {
+                ignoreScrollEvents += 1
+                controller.view.frame = targetFrame
+                lastDocHeight = docHeight
+                DispatchQueue.main.async {
+                    self.ignoreScrollEvents = max(0, self.ignoreScrollEvents - 1)
+                }
+            }
         }
 
         @objc func boundsDidChange(_ notification: Notification) {
             guard ignoreScrollEvents == 0,
-                  let scrollView = scrollView,
-                  let hosting = hosting else { return }
+                  let scrollView = scrollView else { return }
             let fraction = SyncScrollMath.fraction(
                 visibleOrigin: scrollView.contentView.bounds.origin.y,
                 visibleHeight: scrollView.contentView.bounds.height,
-                documentHeight: hosting.frame.height
+                documentHeight: controller.view.frame.height
             )
             if abs(fraction - fractionBinding.wrappedValue) > 0.001 {
                 fractionBinding.wrappedValue = fraction
@@ -207,9 +244,9 @@ struct ScrollableHosting<Content: View>: NSViewRepresentable {
         }
 
         func applyScrollFraction(_ fraction: CGFloat) {
-            guard let scrollView = scrollView, let hosting = hosting else { return }
+            guard let scrollView = scrollView else { return }
             let visible = scrollView.contentView.bounds
-            let scrollable = max(hosting.frame.height - visible.height, 1)
+            let scrollable = max(controller.view.frame.height - visible.height, 1)
             let targetY = fraction * scrollable
             if abs(visible.origin.y - targetY) < 0.5 { return }
             ignoreScrollEvents += 1
