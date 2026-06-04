@@ -52,7 +52,6 @@ Default layout under your working folder:
 ```
 ~/Documents/                ← change in Settings (⌘,)
 ├── 2026-06-04/
-│   ├── lagoon-platform-v2.md       ← derived from YAML `name:` field
 │   ├── meeting-notes.md            ← derived from first heading
 │   └── imported-report.html        ← copied from Downloads
 ├── 2026-06-05/
