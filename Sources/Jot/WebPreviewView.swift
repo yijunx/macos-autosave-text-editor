@@ -18,46 +18,38 @@ struct WebPreviewView: NSViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
 
-        webView.loadHTMLString(WebPreviewView.htmlTemplate, baseURL: nil)
-
         context.coordinator.webView = webView
         context.coordinator.doc = doc
         context.coordinator.lastDocID = doc.id
-        context.coordinator.pendingPayload = WebPreviewView.payload(from: doc)
-        context.coordinator.pendingResetScroll = true
+        context.coordinator.refresh(
+            payload: WebPreviewView.payload(from: doc),
+            resetScroll: true
+        )
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         let coord = context.coordinator
-        let payload = WebPreviewView.payload(from: doc)
+        coord.doc = doc
 
+        let payload = WebPreviewView.payload(from: doc)
         let docChanged = coord.lastDocID != doc.id
         if docChanged {
             coord.lastDocID = doc.id
             coord.lastContent = nil
             coord.lastFraction = nil
         }
-        coord.doc = doc
 
-        let contentChanged = coord.lastContent != payload.content
-        let fraction = doc.scrollFraction
-        let fractionChanged = coord.lastFraction.map { abs($0 - fraction) > 0.001 } ?? true
+        coord.refresh(payload: payload, resetScroll: docChanged)
 
-        coord.lastContent = payload.content
-        coord.lastFraction = fraction
-
-        guard coord.isReady else {
-            coord.pendingPayload = payload
-            coord.pendingResetScroll = docChanged || coord.pendingResetScroll
-            return
-        }
-
-        if contentChanged || docChanged {
-            coord.pushContent(payload, resetScroll: docChanged)
-        }
-        if fractionChanged && !docChanged {
-            coord.applyScroll(fraction)
+        // Scroll sync only matters for Markdown (HTML preview scrolls independently).
+        if payload.mode == .markdown {
+            let fraction = doc.scrollFraction
+            let fractionChanged = coord.lastFraction.map { abs($0 - fraction) > 0.001 } ?? true
+            coord.lastFraction = fraction
+            if fractionChanged && !docChanged && coord.isReady && coord.loadedKind == .markdownTemplate {
+                coord.applyScroll(fraction)
+            }
         }
     }
 
@@ -65,25 +57,94 @@ struct WebPreviewView: NSViewRepresentable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "scroll")
     }
 
+    enum LoadedKind { case none, markdownTemplate, html }
+
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         weak var webView: WKWebView?
         weak var doc: EditorDocument?
         var isReady = false
-        var pendingPayload: Payload?
+        var pendingMarkdown: Payload?
         var pendingResetScroll = true
+        var loadedKind: LoadedKind = .none
         var lastDocID: UUID?
         var lastContent: String?
         var lastFraction: CGFloat?
         var ignoreIncomingScroll = 0
+        var htmlReloadTask: DispatchWorkItem?
+
+        deinit {
+            htmlReloadTask?.cancel()
+        }
+
+        /// Single entry point — decides whether to (re)load the markdown template,
+        /// load the user's HTML directly from disk with proper read access for
+        /// sibling resources, or just push new content into the already-loaded page.
+        func refresh(payload: Payload, resetScroll: Bool) {
+            let neededKind: LoadedKind = payload.mode == .html ? .html : .markdownTemplate
+            let kindChanged = loadedKind != neededKind
+            let contentChanged = lastContent != payload.content
+
+            if !kindChanged && !contentChanged && !resetScroll && loadedKind != .none {
+                return
+            }
+
+            lastContent = payload.content
+
+            if payload.mode == .html {
+                scheduleHTMLLoad(immediate: kindChanged || loadedKind == .none)
+                return
+            }
+
+            // Markdown
+            htmlReloadTask?.cancel()
+            if kindChanged || loadedKind == .none {
+                guard let webView = webView else { return }
+                webView.loadHTMLString(WebPreviewView.htmlTemplate, baseURL: nil)
+                loadedKind = .markdownTemplate
+                isReady = false
+                pendingMarkdown = payload
+                pendingResetScroll = resetScroll
+            } else if isReady {
+                pushMarkdown(payload, resetScroll: resetScroll)
+            } else {
+                pendingMarkdown = payload
+                pendingResetScroll = resetScroll || pendingResetScroll
+            }
+        }
+
+        /// HTML mode uses `loadFileURL(_:allowingReadAccessTo:)` so WebKit grants
+        /// read access to the file's directory tree — that's what lets relative
+        /// `<img src="assets/…">` and `<link href="assets/…">` resolve. Loading from
+        /// disk means we must wait long enough for autosave to flush in-memory edits;
+        /// hence the 500ms debounce (autosave debounces to 400ms).
+        private func scheduleHTMLLoad(immediate: Bool) {
+            htmlReloadTask?.cancel()
+            let task = DispatchWorkItem { [weak self] in
+                guard let self = self,
+                      let webView = self.webView,
+                      let fileURL = self.doc?.fileURL else { return }
+                let parent = fileURL.deletingLastPathComponent()
+                webView.loadFileURL(fileURL, allowingReadAccessTo: parent)
+                self.loadedKind = .html
+                self.isReady = false
+                self.pendingMarkdown = nil
+            }
+            htmlReloadTask = task
+            if immediate {
+                DispatchQueue.main.async(execute: task)
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: task)
+            }
+        }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             isReady = true
-            if let payload = pendingPayload {
-                pushContent(payload, resetScroll: pendingResetScroll)
+            if loadedKind == .markdownTemplate, let payload = pendingMarkdown {
+                pushMarkdown(payload, resetScroll: pendingResetScroll)
                 if !pendingResetScroll, let f = doc?.scrollFraction {
                     applyScroll(f)
                 }
-                pendingPayload = nil
+                pendingMarkdown = nil
             }
         }
 
@@ -118,11 +179,10 @@ struct WebPreviewView: NSViewRepresentable {
             return ext == "html" || ext == "htm"
         }
 
-        func pushContent(_ payload: Payload, resetScroll: Bool) {
+        func pushMarkdown(_ payload: Payload, resetScroll: Bool) {
             guard let webView = webView else { return }
             let json = WebPreviewView.encodeJSONString(payload.content)
-            let fn = payload.mode == .html ? "setHtml" : "setMarkdown"
-            var js = "\(fn)(\(json));"
+            var js = "setMarkdown(\(json));"
             if resetScroll {
                 js += "window.scrollTo(0, 0);"
             }

@@ -10,11 +10,74 @@ final class EditorDocument: ObservableObject, Identifiable {
     let id = UUID()
     @Published var content: String = ""
     @Published var displayName: String = "Untitled"
-    @Published var fileURL: URL? = nil
+    @Published var fileURL: URL? = nil {
+        didSet {
+            if oldValue != fileURL { restartWatcher() }
+        }
+    }
     @Published var scrollFraction: CGFloat = 0
     @Published var contentsOnly: Bool = false
     private var pendingName: String? = nil
     private var saveTask: DispatchWorkItem?
+    private var fileWatcher: DispatchSourceFileSystemObject?
+    private var lastSelfWriteAt: Date?
+    /// Snapshot of `content` as it last existed on disk. The doc is "dirty"
+    /// (worth writing) iff `content != savedContent`.
+    private var savedContent: String = ""
+
+    var isDirty: Bool { content != savedContent }
+
+    /// Replace `content` with a value that was just read from disk so the
+    /// doc starts in a clean (non-dirty) state.
+    func loadContent(_ newContent: String) {
+        savedContent = newContent
+        content = newContent
+    }
+
+    deinit {
+        stopWatcher()
+    }
+
+    private func restartWatcher() {
+        stopWatcher()
+        guard let url = fileURL else { return }
+        let fd = open(url.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .delete, .rename, .extend],
+            queue: .main
+        )
+        source.setEventHandler { [weak self] in
+            self?.handleExternalFileChange()
+        }
+        source.setCancelHandler {
+            close(fd)
+        }
+        fileWatcher = source
+        source.resume()
+    }
+
+    private func stopWatcher() {
+        fileWatcher?.cancel()
+        fileWatcher = nil
+    }
+
+    private func handleExternalFileChange() {
+        guard let url = fileURL else { return }
+        // Atomic writes (ours and others) replace the inode, so we need to
+        // rewire the watcher onto the new file regardless of who wrote it.
+        defer { restartWatcher() }
+
+        if let last = lastSelfWriteAt, Date().timeIntervalSince(last) < 0.5 {
+            // Our own save just landed — nothing to reload.
+            return
+        }
+        guard let newContent = try? String(contentsOf: url, encoding: .utf8),
+              newContent != content else { return }
+        saveTask?.cancel()
+        loadContent(newContent)
+    }
 
     func scheduleSave(folder: URL) {
         if fileURL == nil {
@@ -52,8 +115,15 @@ final class EditorDocument: ObservableObject, Identifiable {
             didCreate = true
         }
         guard let url = fileURL else { return }
+        // Skip the write entirely when the buffer matches what's on disk —
+        // avoids gratuitous mtime bumps on doc-switch/close.
+        if !didCreate && content == savedContent {
+            return
+        }
         do {
             try content.write(to: url, atomically: true, encoding: .utf8)
+            lastSelfWriteAt = Date()
+            savedContent = content
             if didCreate {
                 NotificationCenter.default.post(name: .jotFilesChanged, object: nil)
             }
@@ -134,7 +204,7 @@ final class DocumentStore: ObservableObject {
         doc.fileURL = targetURL
         doc.displayName = targetURL.lastPathComponent
         if let content = try? String(contentsOf: targetURL, encoding: .utf8) {
-            doc.content = content
+            doc.loadContent(content)
         }
         activeDocument = doc
     }
