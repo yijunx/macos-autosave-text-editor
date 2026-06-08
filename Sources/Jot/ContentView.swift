@@ -68,7 +68,7 @@ struct ContentView: View {
                         Image(systemName: ui.readingMode ? "book.fill" : "book")
                             .foregroundColor(ui.readingMode ? .accentColor : .secondary)
                     }
-                    .help(ui.readingMode ? "Exit reading mode" : "Reading mode")
+                    .help(ui.readingMode ? "Exit reading mode (⌘R)" : "Reading mode (⌘R)")
                 }
             }
         }

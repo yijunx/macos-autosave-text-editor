@@ -46,6 +46,12 @@ struct JotApp: App {
                 Button("Reveal in Finder") { store.revealActive() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
             }
+            CommandGroup(after: .toolbar) {
+                Button(ui.readingMode ? "Exit Reading Mode" : "Reading Mode") {
+                    ui.readingMode.toggle()
+                }
+                .keyboardShortcut("r", modifiers: .command)
+            }
             CommandGroup(after: .textEditing) {
                 Section {
                     Button("Find…") {
