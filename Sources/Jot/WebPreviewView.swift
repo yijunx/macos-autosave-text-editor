@@ -3,6 +3,7 @@ import WebKit
 
 struct WebPreviewView: NSViewRepresentable {
     @ObservedObject var doc: EditorDocument
+    var search: PreviewSearchController? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -21,6 +22,7 @@ struct WebPreviewView: NSViewRepresentable {
         context.coordinator.webView = webView
         context.coordinator.doc = doc
         context.coordinator.lastDocID = doc.id
+        search?.webView = webView
         context.coordinator.refresh(
             payload: WebPreviewView.payload(from: doc),
             resetScroll: true
@@ -31,6 +33,7 @@ struct WebPreviewView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         let coord = context.coordinator
         coord.doc = doc
+        search?.webView = webView
 
         let payload = WebPreviewView.payload(from: doc)
         let docChanged = coord.lastDocID != doc.id

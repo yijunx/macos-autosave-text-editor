@@ -1,11 +1,16 @@
 import SwiftUI
 import AppKit
 
+final class UIState: ObservableObject {
+    @Published var readingMode: Bool = false
+    @Published var readingFindTick: Int = 0
+}
+
 struct ContentView: View {
     @EnvironmentObject var store: DocumentStore
+    @EnvironmentObject var ui: UIState
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showPreview: Bool = true
-    @State private var readingMode: Bool = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -13,12 +18,8 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 380)
         } detail: {
             Group {
-                if readingMode {
-                    if let doc = store.activeDocument {
-                        MarkdownPreviewView(doc: doc)
-                    } else {
-                        Color(NSColor.textBackgroundColor)
-                    }
+                if ui.readingMode {
+                    ReadingPane(doc: store.activeDocument, findTick: ui.readingFindTick)
                 } else {
                     HSplitView {
                         EditorPane()
@@ -52,7 +53,7 @@ struct ContentView: View {
                     if let doc = store.activeDocument, isHTML(doc) {
                         ContentsOnlyToggle(doc: doc)
                     }
-                    if !readingMode {
+                    if !ui.readingMode {
                         Button {
                             showPreview.toggle()
                         } label: {
@@ -62,12 +63,12 @@ struct ContentView: View {
                         .help(showPreview ? "Hide preview" : "Show preview")
                     }
                     Button {
-                        readingMode.toggle()
+                        ui.readingMode.toggle()
                     } label: {
-                        Image(systemName: readingMode ? "book.fill" : "book")
-                            .foregroundColor(readingMode ? .accentColor : .secondary)
+                        Image(systemName: ui.readingMode ? "book.fill" : "book")
+                            .foregroundColor(ui.readingMode ? .accentColor : .secondary)
                     }
-                    .help(readingMode ? "Exit reading mode" : "Reading mode")
+                    .help(ui.readingMode ? "Exit reading mode" : "Reading mode")
                 }
             }
         }

@@ -13,6 +13,7 @@ struct JotApp: App {
     @StateObject private var settings: JotSettings
     @StateObject private var store: DocumentStore
     @StateObject private var tree: FileTreeStore
+    @StateObject private var ui = UIState()
 
     init() {
         let s = JotSettings()
@@ -27,6 +28,7 @@ struct JotApp: App {
                 .environmentObject(store)
                 .environmentObject(tree)
                 .environmentObject(settings)
+                .environmentObject(ui)
                 .frame(minWidth: 800, minHeight: 500)
                 .onOpenURL { url in
                     store.openFile(at: url)
@@ -46,8 +48,14 @@ struct JotApp: App {
             }
             CommandGroup(after: .textEditing) {
                 Section {
-                    Button("Find…") { sendFinderAction(.showFindInterface) }
-                        .keyboardShortcut("f", modifiers: .command)
+                    Button("Find…") {
+                        if ui.readingMode {
+                            ui.readingFindTick &+= 1
+                        } else {
+                            sendFinderAction(.showFindInterface)
+                        }
+                    }
+                    .keyboardShortcut("f", modifiers: .command)
                     Button("Find Next") { sendFinderAction(.nextMatch) }
                         .keyboardShortcut("g", modifiers: .command)
                     Button("Find Previous") { sendFinderAction(.previousMatch) }
