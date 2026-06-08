@@ -5,23 +5,34 @@ struct ContentView: View {
     @EnvironmentObject var store: DocumentStore
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showPreview: Bool = true
+    @State private var readingMode: Bool = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             FileTreeView()
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 380)
         } detail: {
-            HSplitView {
-                EditorPane()
-                    .frame(minWidth: 320)
-
-                if showPreview {
+            Group {
+                if readingMode {
                     if let doc = store.activeDocument {
                         MarkdownPreviewView(doc: doc)
-                            .frame(minWidth: 260, idealWidth: 380)
                     } else {
                         Color(NSColor.textBackgroundColor)
-                            .frame(minWidth: 260, idealWidth: 380)
+                    }
+                } else {
+                    HSplitView {
+                        EditorPane()
+                            .frame(minWidth: 320)
+
+                        if showPreview {
+                            if let doc = store.activeDocument {
+                                MarkdownPreviewView(doc: doc)
+                                    .frame(minWidth: 260, idealWidth: 380)
+                            } else {
+                                Color(NSColor.textBackgroundColor)
+                                    .frame(minWidth: 260, idealWidth: 380)
+                            }
+                        }
                     }
                 }
             }
@@ -41,13 +52,22 @@ struct ContentView: View {
                     if let doc = store.activeDocument, isHTML(doc) {
                         ContentsOnlyToggle(doc: doc)
                     }
-                    Button {
-                        showPreview.toggle()
-                    } label: {
-                        Image(systemName: "sidebar.right")
-                            .foregroundColor(showPreview ? .accentColor : .secondary)
+                    if !readingMode {
+                        Button {
+                            showPreview.toggle()
+                        } label: {
+                            Image(systemName: "sidebar.right")
+                                .foregroundColor(showPreview ? .accentColor : .secondary)
+                        }
+                        .help(showPreview ? "Hide preview" : "Show preview")
                     }
-                    .help(showPreview ? "Hide preview" : "Show preview")
+                    Button {
+                        readingMode.toggle()
+                    } label: {
+                        Image(systemName: readingMode ? "book.fill" : "book")
+                            .foregroundColor(readingMode ? .accentColor : .secondary)
+                    }
+                    .help(readingMode ? "Exit reading mode" : "Reading mode")
                 }
             }
         }
