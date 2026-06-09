@@ -1,6 +1,32 @@
 import SwiftUI
 import AppKit
 
+enum FileTreeAction {
+    /// Copy `url`, formatted per the user's setting, to the pasteboard.
+    static func copyPath(_ url: URL, settings: JotSettings) {
+        let formatted = settings.formattedPath(for: url)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(formatted, forType: .string)
+    }
+
+    /// Confirm and move `url` to the Trash. If it's the currently open
+    /// document (or contains it), drop it from the editor first.
+    static func confirmAndDelete(_ url: URL, isDirectory: Bool, store: DocumentStore, tree: FileTreeStore) {
+        let alert = NSAlert()
+        alert.messageText = "Move \u{201C}\(url.lastPathComponent)\u{201D} to the Trash?"
+        alert.informativeText = isDirectory
+            ? "The folder and everything inside it will be moved to the Trash."
+            : "You can recover it from the Trash."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Move to Trash")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        store.discardIfActive(at: url)
+        tree.trash(url)
+    }
+}
+
 struct FileTreeView: View {
     @EnvironmentObject var store: DocumentStore
     @EnvironmentObject var tree: FileTreeStore
@@ -44,7 +70,6 @@ struct FileTreeView: View {
                     DirectoryRow(url: tree.root, depth: 0, alwaysExpanded: true)
                 }
                 .padding(.vertical, 4)
-                .id(tree.refreshToken)
             }
         }
         .background(Color(NSColor.windowBackgroundColor))
@@ -52,7 +77,9 @@ struct FileTreeView: View {
 }
 
 struct DirectoryRow: View {
+    @EnvironmentObject var store: DocumentStore
     @EnvironmentObject var tree: FileTreeStore
+    @EnvironmentObject var settings: JotSettings
     let url: URL
     let depth: Int
     let alwaysExpanded: Bool
@@ -89,6 +116,18 @@ struct DirectoryRow: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Copy Path") {
+                        FileTreeAction.copyPath(url, settings: settings)
+                    }
+                    Button("Reveal in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                    Divider()
+                    Button("Move to Trash", role: .destructive) {
+                        FileTreeAction.confirmAndDelete(url, isDirectory: true, store: store, tree: tree)
+                    }
+                }
             }
             if expanded {
                 ForEach(tree.children(of: url), id: \.id) { node in
@@ -105,6 +144,8 @@ struct DirectoryRow: View {
 
 struct FileRow: View {
     @EnvironmentObject var store: DocumentStore
+    @EnvironmentObject var tree: FileTreeStore
+    @EnvironmentObject var settings: JotSettings
     let url: URL
     let depth: Int
 
@@ -151,5 +192,17 @@ struct FileRow: View {
         }
         .buttonStyle(.plain)
         .help(url.path)
+        .contextMenu {
+            Button("Copy Path") {
+                FileTreeAction.copyPath(url, settings: settings)
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+            Divider()
+            Button("Move to Trash", role: .destructive) {
+                FileTreeAction.confirmAndDelete(url, isDirectory: false, store: store, tree: tree)
+            }
+        }
     }
 }

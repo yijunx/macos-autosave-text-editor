@@ -230,6 +230,18 @@ final class DocumentStore: ObservableObject {
         activeDocument = nil
     }
 
+    /// Drop the active document without saving if its file lives at (or
+    /// beneath) `url`. Used after deleting from the sidebar so we don't
+    /// re-create the just-trashed file via autosave.
+    func discardIfActive(at url: URL) {
+        guard let doc = activeDocument, let docURL = doc.fileURL else { return }
+        let target = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let active = docURL.standardizedFileURL.resolvingSymlinksInPath().path
+        if active == target || active.hasPrefix(target + "/") {
+            activeDocument = nil
+        }
+    }
+
     func revealActive() {
         guard let url = activeDocument?.fileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])

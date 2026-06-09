@@ -41,6 +41,20 @@ final class FileTreeStore: ObservableObject {
         refreshToken = UUID()
     }
 
+    /// Moves `url` to the Trash. Returns true on success.
+    @discardableResult
+    func trash(_ url: URL) -> Bool {
+        var resulting: NSURL?
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: &resulting)
+            NotificationCenter.default.post(name: .jotFilesChanged, object: nil)
+            return true
+        } catch {
+            NSLog("Trash failed for %@: %@", url.path, String(describing: error))
+            return false
+        }
+    }
+
     func children(of url: URL) -> [FileNode] {
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: url,
