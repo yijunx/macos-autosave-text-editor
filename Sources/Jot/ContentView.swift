@@ -18,7 +18,9 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 380)
         } detail: {
             Group {
-                if ui.readingMode {
+                if let doc = store.activeDocument, doc.isImage {
+                    ImageViewerPane(doc: doc)
+                } else if ui.readingMode {
                     ReadingPane(doc: store.activeDocument, findTick: ui.readingFindTick)
                 } else {
                     HSplitView {
@@ -53,22 +55,24 @@ struct ContentView: View {
                     if let doc = store.activeDocument, isHTML(doc) {
                         ContentsOnlyToggle(doc: doc)
                     }
-                    if !ui.readingMode {
-                        Button {
-                            showPreview.toggle()
-                        } label: {
-                            Image(systemName: "sidebar.right")
-                                .foregroundColor(showPreview ? .accentColor : .secondary)
+                    if !(store.activeDocument?.isImage ?? false) {
+                        if !ui.readingMode {
+                            Button {
+                                showPreview.toggle()
+                            } label: {
+                                Image(systemName: "sidebar.right")
+                                    .foregroundColor(showPreview ? .accentColor : .secondary)
+                            }
+                            .help(showPreview ? "Hide preview" : "Show preview")
                         }
-                        .help(showPreview ? "Hide preview" : "Show preview")
+                        Button {
+                            ui.readingMode.toggle()
+                        } label: {
+                            Image(systemName: ui.readingMode ? "book.fill" : "book")
+                                .foregroundColor(ui.readingMode ? .accentColor : .secondary)
+                        }
+                        .help(ui.readingMode ? "Exit reading mode (⌘R)" : "Reading mode (⌘R)")
                     }
-                    Button {
-                        ui.readingMode.toggle()
-                    } label: {
-                        Image(systemName: ui.readingMode ? "book.fill" : "book")
-                            .foregroundColor(ui.readingMode ? .accentColor : .secondary)
-                    }
-                    .help(ui.readingMode ? "Exit reading mode (⌘R)" : "Reading mode (⌘R)")
                 }
             }
         }
@@ -241,5 +245,25 @@ struct EditorView: View {
         guard doc.contentsOnly else { return false }
         let ext = doc.fileURL?.pathExtension.lowercased() ?? ""
         return ext == "html" || ext == "htm"
+    }
+}
+
+struct ImageViewerPane: View {
+    @ObservedObject var doc: EditorDocument
+
+    var body: some View {
+        ZStack {
+            Color(NSColor.textBackgroundColor)
+            if let url = doc.fileURL, let image = NSImage(contentsOf: url) {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .padding(20)
+            } else {
+                Text("Unable to display image")
+                    .foregroundColor(.secondary)
+            }
+        }
     }
 }

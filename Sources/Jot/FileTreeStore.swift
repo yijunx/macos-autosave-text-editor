@@ -66,7 +66,10 @@ final class FileTreeStore: ObservableObject {
         let filtered = contents.filter { item in
             if Self.isDirectory(item) { return true }
             let ext = item.pathExtension.lowercased()
-            return ext == "md" || ext == "markdown" || ext == "html" || ext == "htm"
+            if ext == "md" || ext == "markdown" || ext == "html" || ext == "htm" {
+                return true
+            }
+            return ImageSupport.extensions.contains(ext)
         }
         return filtered
             .sorted { lhs, rhs in

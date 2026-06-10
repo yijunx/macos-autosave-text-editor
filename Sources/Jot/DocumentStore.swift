@@ -6,6 +6,17 @@ extension Notification.Name {
     static let jotFilesChanged = Notification.Name("jotFilesChanged")
 }
 
+enum ImageSupport {
+    static let extensions: Set<String> = [
+        "png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "bmp", "tiff", "tif", "svg"
+    ]
+
+    static func isImage(_ url: URL?) -> Bool {
+        guard let ext = url?.pathExtension.lowercased() else { return false }
+        return extensions.contains(ext)
+    }
+}
+
 final class EditorDocument: ObservableObject, Identifiable {
     let id = UUID()
     @Published var content: String = ""
@@ -26,6 +37,8 @@ final class EditorDocument: ObservableObject, Identifiable {
     private var savedContent: String = ""
 
     var isDirty: Bool { content != savedContent }
+
+    var isImage: Bool { ImageSupport.isImage(fileURL) }
 
     /// Replace `content` with a value that was just read from disk so the
     /// doc starts in a clean (non-dirty) state.
@@ -203,7 +216,8 @@ final class DocumentStore: ObservableObject {
         let doc = EditorDocument()
         doc.fileURL = targetURL
         doc.displayName = targetURL.lastPathComponent
-        if let content = try? String(contentsOf: targetURL, encoding: .utf8) {
+        if !ImageSupport.isImage(targetURL),
+           let content = try? String(contentsOf: targetURL, encoding: .utf8) {
             doc.loadContent(content)
         }
         activeDocument = doc

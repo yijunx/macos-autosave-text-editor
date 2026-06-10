@@ -156,6 +156,7 @@ struct FileRow: View {
     private var ext: String { url.pathExtension.lowercased() }
 
     private var iconName: String {
+        if ImageSupport.extensions.contains(ext) { return "photo" }
         switch ext {
         case "html", "htm": return "chevron.left.forwardslash.chevron.right"
         case "md", "markdown": return "doc.text"
@@ -164,6 +165,7 @@ struct FileRow: View {
     }
 
     private var iconColor: Color {
+        if ImageSupport.extensions.contains(ext) { return .purple.opacity(0.85) }
         switch ext {
         case "html", "htm": return .orange
         case "md", "markdown": return .blue.opacity(0.85)
