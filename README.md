@@ -20,13 +20,16 @@ It also turns out to be a great spot to **jot down ideas by date** — every new
 ## What it does
 
 - **Three panes**: file tree on the left (rooted at your working folder), plain-text editor in the middle, live HTML preview on the right (via WebKit + marked.js). Both side panels collapse from the toolbar.
-- **Autosave by date**: new files land under `<working folder>/<YYYY-MM-DD>/<slug>.md`. The slug is derived from the first non-empty line (with YAML frontmatter `name:` / `title:` honored if present). Nothing is ever in an unsaved buffer.
-- **Open from anywhere**: right-click any `.md` / `.html` in Finder → Open With → Jot. If the file sits outside your working folder, Jot copies it into today's folder first and opens the copy — your original (e.g. Downloads) is left untouched.
+- **Autosave by date**: new files land under `<working folder>/<YYYY-MM-DD>/<slug>.md`. The slug is derived from the first non-empty line (with YAML frontmatter `name:` / `title:` honored if present). Saves debounce to 400 ms after the last keystroke, skip writes when the buffer matches disk, and a per-document file watcher pulls external edits back in if you change the file from another tool.
+- **Open from anywhere**: right-click any `.md` / `.html` / image in Finder → Open With → Jot. If the file sits outside your working folder, Jot copies it into today's folder first and opens the copy — your original (e.g. Downloads) is left untouched.
 - **Inline rename**: a pencil next to the centered filename, plus double-click on the file in the sidebar. Rename moves the file on disk and updates the tree. Compared to having to right-click → rename → confirm in Finder, or rename twice across tabs in VS Code, it's instant.
+- **Reading mode** (`⌘R`): collapses to a single preview-only pane — Markdown rendered, HTML rendered, or the image displayed. Useful when you've stopped editing and just want to read the output without the source column in the way.
 - **HTML Contents Only mode**: a toolbar toggle that appears for `.html` files only. It hides every `<tag>`, every `<style>…</style>` and `<script>…</script>` block, and HTML comments — leaving just the prose visible. The tags stay in the file (saves are non-destructive); they're just rendered invisible while you edit the text.
+- **Image viewing**: open `.png`, `.jpg`/`.jpeg`, `.gif`, `.webp`, `.heic`/`.heif`, `.bmp`, `.tiff`/`.tif`, or `.svg` and Jot shows the image fit-to-pane. Same sidebar, same copy-path/rename/trash menu — just no editor or preview column (there's nothing to edit).
 - **Markdown preview** with full GFM: headings, tables, task lists, nested lists, code fences, blockquotes, strikethrough, autolinks, images. Dark-mode aware. Editor↔preview scroll stays synchronized while you edit Markdown; HTML preview scrolls independently (since it's already the rendered output).
-- **Find** with `⌘F`: matches across the buffer are highlighted in yellow while the find bar is open; closing it clears the highlights.
-- **Configurable working folder** (`⌘,` Settings): defaults to `~/Documents`, can be anything (with or without git, doesn't matter — Jot doesn't care).
+- **Find** with `⌘F`: in edit mode, matches across the buffer are highlighted in yellow while the find bar is open. In reading mode, `⌘F` opens an in-pane find bar that uses WebKit's native `WKFindConfiguration` to step through matches in the rendered preview.
+- **Sidebar context menu**: right-click any file or folder for Copy Path, Reveal in Finder, and Move to Trash (with confirm). Deleting the file that's currently open drops the editor first so autosave doesn't recreate it.
+- **Configurable working folder & copy-path format** (`⌘,` Settings): working folder defaults to `~/Documents` and can be anything. Copy Path is configurable between absolute (`/Users/you/Documents/…`), home-relative (`~/Documents/…`), and working-folder-relative (`2026-06-10/note.md`).
 - **Single window**, single document at a time. Sidebar navigates, editor edits. No tab clutter.
 
 ## What it deliberately doesn't do
@@ -71,7 +74,8 @@ The slug rule:
 |----------|--------|
 | `⌘N` | New file |
 | `⌘W` | Close current file |
-| `⌘F` | Find (highlights all matches in yellow) |
+| `⌘R` | Toggle reading mode |
+| `⌘F` | Find — in-buffer (edit mode) or in-preview (reading mode) |
 | `⌘G` / `⌘⇧G` | Find next / previous |
 | `⌘⇧R` | Reveal current file in Finder |
 | `⌘,` | Settings |
@@ -81,7 +85,8 @@ The slug rule:
 - **UI**: SwiftUI with a single `Window` scene, `NavigationSplitView`.
 - **Editor**: `NSTextView` (TextKit 1) wrapped in `NSViewRepresentable`. Display-only attributes (`NSLayoutManager.addTemporaryAttribute`) drive tag-hiding and search highlighting, so the underlying text storage is never mutated — your saves are always the exact bytes you see in source mode.
 - **Preview**: `WKWebView` rendering an HTML template that inlines [marked.js 12.0.2](https://github.com/markedjs/marked). Markdown ↔ HTML conversion happens entirely locally; no network at runtime.
-- **Sync**: editor and Markdown preview share a `scrollFraction` via a `WKScriptMessageHandler` ↔ `evaluateJavaScript` round-trip. HTML files skip the sync (preview is the rendered output, scrolling it shouldn't pull the source around).
+- **Sync**: editor and Markdown preview share a `scrollFraction` via a `WKScriptMessageHandler` ↔ `evaluateJavaScript` round-trip. HTML files skip the sync (preview is the rendered output, scrolling it shouldn't pull the source around). Reading-mode find delegates to `WKWebView.find(_:configuration:)` so it's the same matcher Safari uses.
+- **External-edit pickup**: each open document holds a `DispatchSource.makeFileSystemObjectSource` watcher on its file. When another tool writes the file, the watcher reloads it (deduping against our own atomic-save inode swap via a 500 ms self-write window).
 - **Build**: pure Swift Package Manager — `swift build -c release` plus a small `build.sh` that wraps the binary in a `.app` bundle, generates `Jot.icns` from `assets/jot.png` via `sips` + `iconutil`, copies the SPM resource bundle (containing `marked.min.js`) into `Contents/Resources/`, and ad-hoc codesigns. No Xcode required.
 - **Footprint**: the built `.app` is around 1 MB of code + 35 KB of bundled JS + the icon. Cold launch is effectively instantaneous.
 - **Network**: zero at runtime. The only network call in this repository's lifetime was downloading `marked.min.js` once at build setup.
@@ -96,7 +101,7 @@ Sources/Jot/
 ├── DocumentStore.swift    ← EditorDocument + open/save/rename + slug rules
 ├── FileTreeStore.swift    ← sidebar root + change notifications
 ├── FileTreeView.swift     ← sidebar UI
-├── MarkdownPreview.swift  ← passthrough to WebPreviewView
+├── MarkdownPreview.swift  ← preview wrapper + ReadingPane + WKWebView find controller
 ├── WebPreviewView.swift   ← WKWebView wrapper + marked.js template
 ├── Settings.swift         ← JotSettings + SettingsView (⌘,)
 ├── SyncScrolling.swift    ← CodeEditorView (NSTextView) + scroll math + tag-hiding/search
@@ -109,4 +114,4 @@ Package.swift, build.sh
 
 ## Status
 
-Personal tool. Built incrementally to scratch specific itches. Things that could be added if anyone needs them: line-anchored scroll mapping for the long-doc edge case, multi-window mode, file-watcher refresh of the tree when external edits land, configurable themes for the preview, syntax highlighting in code fences. None of those are in scope right now.
+Personal tool. Built incrementally to scratch specific itches. Things that could be added if anyone needs them: line-anchored scroll mapping for the long-doc edge case, multi-window mode, file-watcher refresh of the *sidebar tree* when external edits land (the active document already auto-reloads), zoom controls in the image viewer, configurable themes for the preview, syntax highlighting in code fences. None of those are in scope right now.
