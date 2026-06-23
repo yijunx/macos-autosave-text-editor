@@ -50,7 +50,7 @@ struct WebPreviewView: NSViewRepresentable {
             let fraction = doc.scrollFraction
             let fractionChanged = coord.lastFraction.map { abs($0 - fraction) > 0.001 } ?? true
             coord.lastFraction = fraction
-            if fractionChanged && !docChanged && coord.isReady && coord.loadedKind == .markdownTemplate {
+            if fractionChanged && !docChanged && coord.isReady && coord.loadedKind == .template {
                 coord.applyScroll(fraction)
             }
         }
@@ -60,13 +60,13 @@ struct WebPreviewView: NSViewRepresentable {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "scroll")
     }
 
-    enum LoadedKind { case none, markdownTemplate, html }
+    enum LoadedKind { case none, template, html }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         weak var webView: WKWebView?
         weak var doc: EditorDocument?
         var isReady = false
-        var pendingMarkdown: Payload?
+        var pendingPayload: Payload?
         var pendingResetScroll = true
         var loadedKind: LoadedKind = .none
         var lastDocID: UUID?
@@ -79,11 +79,11 @@ struct WebPreviewView: NSViewRepresentable {
             htmlReloadTask?.cancel()
         }
 
-        /// Single entry point — decides whether to (re)load the markdown template,
+        /// Single entry point — decides whether to (re)load the preview template,
         /// load the user's HTML directly from disk with proper read access for
         /// sibling resources, or just push new content into the already-loaded page.
         func refresh(payload: Payload, resetScroll: Bool) {
-            let neededKind: LoadedKind = payload.mode == .html ? .html : .markdownTemplate
+            let neededKind: LoadedKind = payload.mode == .html ? .html : .template
             let kindChanged = loadedKind != neededKind
             let contentChanged = lastContent != payload.content
 
@@ -98,19 +98,19 @@ struct WebPreviewView: NSViewRepresentable {
                 return
             }
 
-            // Markdown
+            // Template-backed modes: Markdown, JSON, and JSONL.
             htmlReloadTask?.cancel()
             if kindChanged || loadedKind == .none {
                 guard let webView = webView else { return }
                 webView.loadHTMLString(WebPreviewView.htmlTemplate, baseURL: nil)
-                loadedKind = .markdownTemplate
+                loadedKind = .template
                 isReady = false
-                pendingMarkdown = payload
+                pendingPayload = payload
                 pendingResetScroll = resetScroll
             } else if isReady {
-                pushMarkdown(payload, resetScroll: resetScroll)
+                pushPayload(payload, resetScroll: resetScroll)
             } else {
-                pendingMarkdown = payload
+                pendingPayload = payload
                 pendingResetScroll = resetScroll || pendingResetScroll
             }
         }
@@ -130,7 +130,7 @@ struct WebPreviewView: NSViewRepresentable {
                 webView.loadFileURL(fileURL, allowingReadAccessTo: parent)
                 self.loadedKind = .html
                 self.isReady = false
-                self.pendingMarkdown = nil
+                self.pendingPayload = nil
             }
             htmlReloadTask = task
             if immediate {
@@ -142,12 +142,12 @@ struct WebPreviewView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             isReady = true
-            if loadedKind == .markdownTemplate, let payload = pendingMarkdown {
-                pushMarkdown(payload, resetScroll: pendingResetScroll)
+            if loadedKind == .template, let payload = pendingPayload {
+                pushPayload(payload, resetScroll: pendingResetScroll)
                 if !pendingResetScroll, let f = doc?.scrollFraction {
                     applyScroll(f)
                 }
-                pendingMarkdown = nil
+                pendingPayload = nil
             }
         }
 
@@ -168,7 +168,7 @@ struct WebPreviewView: NSViewRepresentable {
             guard message.name == "scroll",
                   let value = message.body as? Double else { return }
             if ignoreIncomingScroll > 0 { return }
-            if isHTMLMode { return }
+            if !shouldSyncScroll { return }
             let cg = CGFloat(value)
             guard let doc = doc else { return }
             if abs(doc.scrollFraction - cg) > 0.002 {
@@ -177,15 +177,26 @@ struct WebPreviewView: NSViewRepresentable {
             }
         }
 
-        private var isHTMLMode: Bool {
+        private var shouldSyncScroll: Bool {
             let ext = doc?.fileURL?.pathExtension.lowercased() ?? ""
-            return ext == "html" || ext == "htm"
+            return ext.isEmpty || ext == "md" || ext == "markdown"
         }
 
-        func pushMarkdown(_ payload: Payload, resetScroll: Bool) {
+        func pushPayload(_ payload: Payload, resetScroll: Bool) {
             guard let webView = webView else { return }
             let json = WebPreviewView.encodeJSONString(payload.content)
-            var js = "setMarkdown(\(json));"
+            let renderCall: String
+            switch payload.mode {
+            case .markdown:
+                renderCall = "setMarkdown(\(json));"
+            case .json:
+                renderCall = "setJSON(\(json));"
+            case .jsonLines:
+                renderCall = "setJSONLines(\(json));"
+            case .html:
+                renderCall = "setHtml(\(json));"
+            }
+            var js = renderCall
             if resetScroll {
                 js += "window.scrollTo(0, 0);"
             }
@@ -198,7 +209,7 @@ struct WebPreviewView: NSViewRepresentable {
 
         func applyScroll(_ fraction: CGFloat) {
             guard let webView = webView else { return }
-            if isHTMLMode { return }
+            if !shouldSyncScroll { return }
             ignoreIncomingScroll += 1
             webView.evaluateJavaScript("applyScroll(\(fraction));", completionHandler: nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
@@ -207,7 +218,7 @@ struct WebPreviewView: NSViewRepresentable {
         }
     }
 
-    enum RenderMode { case markdown, html }
+    enum RenderMode { case markdown, html, json, jsonLines }
     struct Payload {
         let mode: RenderMode
         let content: String
@@ -217,6 +228,12 @@ struct WebPreviewView: NSViewRepresentable {
         let ext = doc.fileURL?.pathExtension.lowercased() ?? ""
         if ext == "html" || ext == "htm" {
             return Payload(mode: .html, content: doc.content)
+        }
+        if ext == "json" {
+            return Payload(mode: .json, content: doc.content)
+        }
+        if ext == "jsonl" {
+            return Payload(mode: .jsonLines, content: doc.content)
         }
         return Payload(mode: .markdown, content: doc.content)
     }
@@ -246,6 +263,10 @@ struct WebPreviewView: NSViewRepresentable {
     --code-bg: #f4f4f5;
     --quote-border: #007aff;
     --link: #007aff;
+    --json-key: #8a4f00;
+    --json-string: #137333;
+    --json-number: #9d174d;
+    --json-literal: #5b5fc7;
 }
 @media (prefers-color-scheme: dark) {
     :root {
@@ -256,6 +277,10 @@ struct WebPreviewView: NSViewRepresentable {
         --code-bg: #2a2a2c;
         --quote-border: #0a84ff;
         --link: #0a84ff;
+        --json-key: #f4bf75;
+        --json-string: #7ee787;
+        --json-number: #ff9ac1;
+        --json-literal: #a5b4fc;
     }
 }
 * { box-sizing: border-box; }
@@ -302,6 +327,21 @@ pre {
     margin: 12px 0;
 }
 pre code { padding: 0; background: transparent; border-radius: 0; }
+pre.json-preview {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+pre.json-preview code {
+    font: 13px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.json-key { color: var(--json-key); }
+.json-string { color: var(--json-string); }
+.json-number { color: var(--json-number); }
+.json-literal { color: var(--json-literal); }
 table { border-collapse: collapse; margin: 12px 0; }
 th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
 th { background: var(--code-bg); font-weight: 600; }
@@ -321,6 +361,60 @@ window.setMarkdown = function(text) {
 };
 window.setHtml = function(html) {
     document.getElementById('content').innerHTML = html || '';
+};
+function escapeHTML(value) {
+    return String(value).replace(/[&<>"']/g, function(ch) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[ch];
+    });
+}
+function jsonSyntaxHighlight(text) {
+    var tokenPattern = /("(?:\\\\u[a-fA-F0-9]{4}|\\\\[^u]|[^\\\\"])*"(\\s*:)?|\\btrue\\b|\\bfalse\\b|\\bnull\\b|-?\\d+(?:\\.\\d+)?(?:[eE][+\\-]?\\d+)?)/g;
+    return String(text).replace(tokenPattern, function(token) {
+        var cls = 'json-number';
+        if (/^"/.test(token)) {
+            cls = /:\\s*$/.test(token) ? 'json-key' : 'json-string';
+        } else if (/true|false|null/.test(token)) {
+            cls = 'json-literal';
+        }
+        return '<span class="' + cls + '">' + escapeHTML(token) + '</span>';
+    });
+}
+function renderJSONParts(parts) {
+    var html = parts.map(function(part) {
+        return part.json ? jsonSyntaxHighlight(part.text) : escapeHTML(part.text);
+    }).join('\\n');
+    document.getElementById('content').innerHTML = '<pre class="json-preview"><code>' + html + '</code></pre>';
+}
+window.setJSON = function(text) {
+    var source = text || '';
+    try {
+        renderJSONParts([{ json: true, text: JSON.stringify(JSON.parse(source), null, 2) }]);
+    } catch (err) {
+        renderJSONParts([{ json: false, text: source }]);
+    }
+};
+window.setJSONLines = function(text) {
+    var source = text || '';
+    var lines = source.split(/\\r?\\n/);
+    if (/\\r?\\n$/.test(source) && lines.length && lines[lines.length - 1] === '') {
+        lines.pop();
+    }
+    var parts = lines.map(function(line) {
+        var trimmed = line.trim();
+        if (!trimmed) return { json: false, text: '' };
+        try {
+            return { json: true, text: JSON.stringify(JSON.parse(trimmed), null, 2) };
+        } catch (err) {
+            return { json: false, text: line };
+        }
+    });
+    renderJSONParts(parts);
 };
 window.applyScroll = function(fraction) {
     var h = document.documentElement.scrollHeight - window.innerHeight;
