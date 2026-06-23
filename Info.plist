@@ -30,6 +30,57 @@
     <true/>
     <key>NSSupportsSuddenTermination</key>
     <false/>
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.yijunx.jot.jsonlines</string>
+            <key>UTTypeDescription</key>
+            <string>JSON Lines Document</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.text</string>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>jsonl</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>application/jsonl</string>
+                    <string>application/x-ndjson</string>
+                </array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.yijunx.jot.yaml</string>
+            <key>UTTypeDescription</key>
+            <string>YAML Document</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.text</string>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>yaml</string>
+                    <string>yml</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>application/yaml</string>
+                    <string>application/x-yaml</string>
+                    <string>text/yaml</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>
@@ -65,6 +116,41 @@
             <key>LSItemContentTypes</key>
             <array>
                 <string>public.html</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>JSON Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>json</string>
+                <string>jsonl</string>
+            </array>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.json</string>
+                <string>com.yijunx.jot.jsonlines</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>YAML Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>yaml</string>
+                <string>yml</string>
+            </array>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.yijunx.jot.yaml</string>
             </array>
         </dict>
     </array>

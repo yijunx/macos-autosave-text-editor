@@ -159,6 +159,8 @@ struct FileRow: View {
         if ImageSupport.extensions.contains(ext) { return "photo" }
         switch ext {
         case "html", "htm": return "chevron.left.forwardslash.chevron.right"
+        case "json", "jsonl": return "curlybraces"
+        case "yaml", "yml": return "doc.text"
         case "md", "markdown": return "doc.text"
         default: return "doc"
         }
@@ -168,6 +170,8 @@ struct FileRow: View {
         if ImageSupport.extensions.contains(ext) { return .purple.opacity(0.85) }
         switch ext {
         case "html", "htm": return .orange
+        case "json", "jsonl": return .green.opacity(0.85)
+        case "yaml", "yml": return .teal.opacity(0.85)
         case "md", "markdown": return .blue.opacity(0.85)
         default: return .secondary
         }

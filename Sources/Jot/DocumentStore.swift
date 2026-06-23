@@ -17,6 +17,137 @@ enum ImageSupport {
     }
 }
 
+enum JSONSupport {
+    static let extensions: Set<String> = ["json", "jsonl"]
+
+    static func isJSON(_ url: URL?) -> Bool {
+        guard let ext = url?.pathExtension.lowercased() else { return false }
+        return extensions.contains(ext)
+    }
+
+    static func beautifyFileIfPossible(at url: URL) {
+        guard let content = try? String(contentsOf: url, encoding: .utf8),
+              let formatted = beautifiedContent(content, fileExtension: url.pathExtension),
+              formatted != content else { return }
+        do {
+            try formatted.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            NSLog("JSON beautify failed for %@: %@", url.path, String(describing: error))
+        }
+    }
+
+    private static func beautifiedContent(_ content: String, fileExtension: String) -> String? {
+        switch fileExtension.lowercased() {
+        case "json":
+            return prettyPrintedJSON(content)
+        case "jsonl":
+            return normalizedJSONLines(content)
+        default:
+            return nil
+        }
+    }
+
+    private static func prettyPrintedJSON(_ content: String) -> String? {
+        guard let data = content.data(using: .utf8) else { return nil }
+        do {
+            let object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+            let pretty = try JSONSerialization.data(
+                withJSONObject: object,
+                options: [.prettyPrinted, .withoutEscapingSlashes]
+            )
+            guard var text = String(data: pretty, encoding: .utf8) else { return nil }
+            if !text.hasSuffix("\n") { text += "\n" }
+            return text
+        } catch {
+            return nil
+        }
+    }
+
+    private static func normalizedJSONLines(_ content: String) -> String? {
+        let hasTrailingNewline = content.hasSuffix("\n") || content.hasSuffix("\r")
+        var lines = content.components(separatedBy: .newlines)
+        if hasTrailingNewline, lines.last == "" {
+            lines.removeLast()
+        }
+
+        var sawJSON = false
+        var formatted: [String] = []
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else {
+                formatted.append("")
+                continue
+            }
+            guard let data = trimmed.data(using: .utf8) else { return nil }
+            do {
+                let object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+                let pretty = try JSONSerialization.data(
+                    withJSONObject: object,
+                    options: [.prettyPrinted, .withoutEscapingSlashes]
+                )
+                guard let text = String(data: pretty, encoding: .utf8) else { return nil }
+                formatted.append(singleLinePrettyJSON(text))
+                sawJSON = true
+            } catch {
+                return nil
+            }
+        }
+
+        guard sawJSON else { return nil }
+        var result = formatted.joined(separator: "\n")
+        if hasTrailingNewline { result += "\n" }
+        return result
+    }
+
+    private static func singleLinePrettyJSON(_ text: String) -> String {
+        var output = ""
+        var inString = false
+        var escaped = false
+        var pendingSpace = false
+
+        for ch in text {
+            if inString {
+                output.append(ch)
+                if escaped {
+                    escaped = false
+                } else if ch == "\\" {
+                    escaped = true
+                } else if ch == "\"" {
+                    inString = false
+                }
+                continue
+            }
+
+            if ch == "\"" {
+                appendPendingSpaceIfNeeded(&output, pendingSpace: &pendingSpace, before: ch)
+                output.append(ch)
+                inString = true
+            } else if ch.isWhitespace {
+                pendingSpace = true
+            } else {
+                appendPendingSpaceIfNeeded(&output, pendingSpace: &pendingSpace, before: ch)
+                output.append(ch)
+            }
+        }
+
+        return output.trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func appendPendingSpaceIfNeeded(_ output: inout String,
+                                                   pendingSpace: inout Bool,
+                                                   before next: Character) {
+        guard pendingSpace else { return }
+        pendingSpace = false
+        guard !output.isEmpty else { return }
+        if ",:}]".contains(next) { return }
+        output.append(" ")
+    }
+}
+
+enum YAMLSupport {
+    static let extensions: Set<String> = ["yaml", "yml"]
+}
+
 final class EditorDocument: ObservableObject, Identifiable {
     let id = UUID()
     @Published var content: String = ""
@@ -232,6 +363,9 @@ final class DocumentStore: ObservableObject {
         let target = DocumentStore.uniqueURL(in: destDir, baseName: finalBase, ext: ext)
         do {
             try FileManager.default.copyItem(at: source, to: target)
+            if JSONSupport.isJSON(target) {
+                JSONSupport.beautifyFileIfPossible(at: target)
+            }
             return target
         } catch {
             NSLog("Failed to import %@: %@", source.path, String(describing: error))

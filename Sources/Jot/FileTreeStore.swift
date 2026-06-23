@@ -69,6 +69,8 @@ final class FileTreeStore: ObservableObject {
             if ext == "md" || ext == "markdown" || ext == "html" || ext == "htm" {
                 return true
             }
+            if JSONSupport.extensions.contains(ext) { return true }
+            if YAMLSupport.extensions.contains(ext) { return true }
             return ImageSupport.extensions.contains(ext)
         }
         return filtered
