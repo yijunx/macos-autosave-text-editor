@@ -24,6 +24,7 @@ It also turns out to be a great spot to **jot down ideas by date** — every new
 - **Open from anywhere**: right-click any `.md` / `.html` / `.json` / `.jsonl` / `.yaml` / `.yml` / image in Finder → Open With → Jot. If the file sits outside your working folder, Jot copies it into today's folder first and opens the copy — your original (e.g. Downloads) is left untouched.
 - **Inline rename**: a pencil next to the centered filename, plus double-click on the file in the sidebar. Rename moves the file on disk and updates the tree. Compared to having to right-click → rename → confirm in Finder, or rename twice across tabs in VS Code, it's instant.
 - **Reading mode** (`⌘R`): collapses to a single preview-only pane — Markdown rendered, HTML rendered, JSON prettified, JSONL records expanded, or the image displayed. Useful when you've stopped editing and just want to read the output without the source column in the way.
+- **Reading zoom** (`⌘=` / `⌘-`): magnifies or shrinks reading mode like a browser. The zoom level is remembered globally and reused for every readable file.
 - **HTML Contents Only mode**: a toolbar toggle that appears for `.html` files only. It hides every `<tag>`, every `<style>…</style>` and `<script>…</script>` block, and HTML comments — leaving just the prose visible. The tags stay in the file (saves are non-destructive); they're just rendered invisible while you edit the text.
 - **JSON / JSONL viewing and editing**: open `.json` or `.jsonl` files directly from Finder or the sidebar. Files imported from outside the working folder are copied into today's folder and beautified when valid. JSON previews are pretty-printed with lightweight highlighting; JSONL stays line-delimited in source and expands each record in reading mode.
 - **Image viewing**: open `.png`, `.jpg`/`.jpeg`, `.gif`, `.webp`, `.heic`/`.heif`, `.bmp`, `.tiff`/`.tif`, or `.svg` and Jot shows the image fit-to-pane. Same sidebar, same copy-path/rename/trash menu — just no editor or preview column (there's nothing to edit).
@@ -77,6 +78,7 @@ The slug rule:
 | `⌘N` | New file |
 | `⌘W` | Close current file |
 | `⌘R` | Toggle reading mode |
+| `⌘=` / `⌘-` | Zoom reading mode in / out |
 | `⌘F` | Find — in-buffer (edit mode) or in-preview (reading mode) |
 | `⌘G` / `⌘⇧G` | Find next / previous |
 | `⌘⇧R` | Reveal current file in Finder |

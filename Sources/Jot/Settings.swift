@@ -42,6 +42,10 @@ enum CopyPathFormat: String, CaseIterable, Identifiable {
 final class JotSettings: ObservableObject {
     static let workingDirKey = "workingDirectoryPath"
     static let copyPathFormatKey = "copyPathFormat"
+    static let readingZoomScaleKey = "readingZoomScale"
+    static let minReadingZoomScale = 0.5
+    static let maxReadingZoomScale = 3.0
+    static let readingZoomStep = 0.1
 
     @Published var workingDirectory: URL {
         didSet {
@@ -52,6 +56,12 @@ final class JotSettings: ObservableObject {
     @Published var copyPathFormat: CopyPathFormat {
         didSet {
             UserDefaults.standard.set(copyPathFormat.rawValue, forKey: Self.copyPathFormatKey)
+        }
+    }
+
+    @Published var readingZoomScale: Double {
+        didSet {
+            UserDefaults.standard.set(readingZoomScale, forKey: Self.readingZoomScaleKey)
         }
     }
 
@@ -72,6 +82,13 @@ final class JotSettings: ObservableObject {
         } else {
             copyPathFormat = .tilde
         }
+        if UserDefaults.standard.object(forKey: Self.readingZoomScaleKey) != nil {
+            readingZoomScale = Self.normalizedReadingZoomScale(
+                UserDefaults.standard.double(forKey: Self.readingZoomScaleKey)
+            )
+        } else {
+            readingZoomScale = 1.0
+        }
     }
 
     func resetToDefault() {
@@ -80,6 +97,19 @@ final class JotSettings: ObservableObject {
 
     func formattedPath(for url: URL) -> String {
         copyPathFormat.format(url, workingDirectory: workingDirectory)
+    }
+
+    func zoomReadingModeIn() {
+        readingZoomScale = Self.normalizedReadingZoomScale(readingZoomScale + Self.readingZoomStep)
+    }
+
+    func zoomReadingModeOut() {
+        readingZoomScale = Self.normalizedReadingZoomScale(readingZoomScale - Self.readingZoomStep)
+    }
+
+    private static func normalizedReadingZoomScale(_ value: Double) -> Double {
+        let clamped = min(max(value, minReadingZoomScale), maxReadingZoomScale)
+        return (clamped * 100).rounded() / 100
     }
 }
 

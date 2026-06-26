@@ -33,6 +33,7 @@ final class PreviewSearchController: ObservableObject {
 }
 
 struct ReadingPane: View {
+    @EnvironmentObject var settings: JotSettings
     let doc: EditorDocument?
     let findTick: Int
 
@@ -55,7 +56,11 @@ struct ReadingPane: View {
                 )
             }
             if let doc {
-                WebPreviewView(doc: doc, search: search)
+                WebPreviewView(
+                    doc: doc,
+                    search: search,
+                    zoomScale: CGFloat(settings.readingZoomScale)
+                )
                     .background(Color(NSColor.textBackgroundColor))
             } else {
                 Color(NSColor.textBackgroundColor)

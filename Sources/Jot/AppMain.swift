@@ -51,6 +51,17 @@ struct JotApp: App {
                     ui.readingMode.toggle()
                 }
                 .keyboardShortcut("r", modifiers: .command)
+                Divider()
+                Button("Zoom In") {
+                    settings.zoomReadingModeIn()
+                }
+                .keyboardShortcut("=", modifiers: .command)
+                .disabled(!ui.readingMode)
+                Button("Zoom Out") {
+                    settings.zoomReadingModeOut()
+                }
+                .keyboardShortcut("-", modifiers: .command)
+                .disabled(!ui.readingMode)
             }
             CommandGroup(after: .textEditing) {
                 Section {

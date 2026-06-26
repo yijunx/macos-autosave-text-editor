@@ -4,6 +4,7 @@ import WebKit
 struct WebPreviewView: NSViewRepresentable {
     @ObservedObject var doc: EditorDocument
     var search: PreviewSearchController? = nil
+    var zoomScale: CGFloat = 1.0
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -17,6 +18,7 @@ struct WebPreviewView: NSViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
+        webView.pageZoom = zoomScale
         webView.setValue(false, forKey: "drawsBackground")
 
         context.coordinator.webView = webView
@@ -34,6 +36,9 @@ struct WebPreviewView: NSViewRepresentable {
         let coord = context.coordinator
         coord.doc = doc
         search?.webView = webView
+        if abs(webView.pageZoom - zoomScale) > 0.001 {
+            webView.pageZoom = zoomScale
+        }
 
         let payload = WebPreviewView.payload(from: doc)
         let docChanged = coord.lastDocID != doc.id
