@@ -39,41 +39,77 @@ struct ContentView: View {
                     }
                 }
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .navigation) {
-                    Button {
-                        store.newDocument()
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                    }
-                    .help("New file (⌘N)")
+            .toolbar { mainToolbar }
+        }
+    }
+
+    // MARK: Toolbar
+
+    @ToolbarContentBuilder
+    private var mainToolbar: some ToolbarContent {
+        navigationGroup
+        principalTitleItem
+        primaryActionGroup
+    }
+
+    @ToolbarContentBuilder
+    private var navigationGroup: some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            ToolbarItemGroup(placement: .navigation) { navigationButtons }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItemGroup(placement: .navigation) { navigationButtons }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var principalTitleItem: some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .principal) { PrincipalTitle() }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .principal) { PrincipalTitle() }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var primaryActionGroup: some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            ToolbarItemGroup(placement: .primaryAction) { primaryButtons }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItemGroup(placement: .primaryAction) { primaryButtons }
+        }
+    }
+
+    @ViewBuilder
+    private var navigationButtons: some View {
+        ToolbarIconButton(systemName: "square.and.pencil", help: "New file (⌘N)") {
+            store.newDocument()
+        }
+    }
+
+    @ViewBuilder
+    private var primaryButtons: some View {
+        if let doc = store.activeDocument, isHTML(doc) {
+            ContentsOnlyToggle(doc: doc)
+        }
+        if !(store.activeDocument?.isImage ?? false) {
+            if !ui.readingMode {
+                ToolbarIconButton(
+                    systemName: "sidebar.right",
+                    isActive: showPreview,
+                    help: showPreview ? "Hide preview" : "Show preview"
+                ) {
+                    showPreview.toggle()
                 }
-                ToolbarItem(placement: .principal) {
-                    PrincipalTitle()
-                }
-                ToolbarItemGroup(placement: .primaryAction) {
-                    if let doc = store.activeDocument, isHTML(doc) {
-                        ContentsOnlyToggle(doc: doc)
-                    }
-                    if !(store.activeDocument?.isImage ?? false) {
-                        if !ui.readingMode {
-                            Button {
-                                showPreview.toggle()
-                            } label: {
-                                Image(systemName: "sidebar.right")
-                                    .foregroundColor(showPreview ? .accentColor : .secondary)
-                            }
-                            .help(showPreview ? "Hide preview" : "Show preview")
-                        }
-                        Button {
-                            ui.readingMode.toggle()
-                        } label: {
-                            Image(systemName: ui.readingMode ? "book.fill" : "book")
-                                .foregroundColor(ui.readingMode ? .accentColor : .secondary)
-                        }
-                        .help(ui.readingMode ? "Exit reading mode (⌘R)" : "Reading mode (⌘R)")
-                    }
-                }
+            }
+            ToolbarIconButton(
+                systemName: ui.readingMode ? "book.fill" : "book",
+                isActive: ui.readingMode,
+                help: ui.readingMode ? "Exit reading mode (⌘R)" : "Reading mode (⌘R)"
+            ) {
+                ui.readingMode.toggle()
             }
         }
     }
@@ -84,15 +120,50 @@ struct ContentView: View {
     }
 }
 
+/// A flat, borderless toolbar button: transparent at rest, a subtle highlight
+/// on hover, and an accent-filled pill when `isActive`.
+struct ToolbarIconButton: View {
+    let systemName: String
+    var isActive: Bool = false
+    let help: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(isActive ? .white : .secondary)
+                .frame(width: 28, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(fill)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(help)
+    }
+
+    private var fill: Color {
+        if isActive { return .accentColor }
+        if hovering { return Color.primary.opacity(0.08) }
+        return .clear
+    }
+}
+
 struct ContentsOnlyToggle: View {
     @ObservedObject var doc: EditorDocument
 
     var body: some View {
-        Toggle(isOn: $doc.contentsOnly) {
-            Label("Contents only", systemImage: "text.alignleft")
+        ToolbarIconButton(
+            systemName: "text.alignleft",
+            isActive: doc.contentsOnly,
+            help: "Hide HTML tags so just the content shows"
+        ) {
+            doc.contentsOnly.toggle()
         }
-        .toggleStyle(.button)
-        .help("Hide HTML tags so just the content shows")
     }
 }
 
@@ -104,7 +175,8 @@ struct PrincipalTitle: View {
             EditableTitle(doc: doc)
         } else {
             Text("Jot")
-                .font(.system(.body).weight(.semibold))
+                .font(.system(.body, design: .rounded).weight(.semibold))
+                .foregroundColor(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: 360)
@@ -116,17 +188,24 @@ struct EditableTitle: View {
     @ObservedObject var doc: EditorDocument
     @State private var editing = false
     @State private var draft = ""
+    @State private var hovering = false
     @FocusState private var focused: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
+        Group {
             if editing {
                 TextField("", text: $draft)
                     .textFieldStyle(.plain)
-                    .font(.system(.body).weight(.semibold))
+                    .font(.system(.body, design: .rounded).weight(.semibold))
                     .multilineTextAlignment(.center)
                     .focused($focused)
                     .frame(minWidth: 120, maxWidth: 320)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.06))
+                    )
                     .onAppear { focused = true }
                     .onSubmit { commit() }
                     .onExitCommand { editing = false }
@@ -134,21 +213,30 @@ struct EditableTitle: View {
                         if !isFocused && editing { commit() }
                     }
             } else {
-                Text(doc.displayName)
-                    .font(.system(.body).weight(.semibold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                Button(action: begin) {
+                    HStack(spacing: 5) {
+                        Text(doc.displayName)
+                            .font(.system(.body, design: .rounded).weight(.semibold))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .opacity(hovering ? 1 : 0)
+                    }
                     .frame(maxWidth: 320)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(hovering ? Color.primary.opacity(0.06) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onHover { hovering = $0 }
+                .help("Rename file")
             }
-            Button {
-                if editing { commit() } else { begin() }
-            } label: {
-                Image(systemName: editing ? "checkmark" : "pencil")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help(editing ? "Save name" : "Rename file")
         }
     }
 

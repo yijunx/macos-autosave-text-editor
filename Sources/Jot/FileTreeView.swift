@@ -31,6 +31,21 @@ struct FileTreeView: View {
     @EnvironmentObject var store: DocumentStore
     @EnvironmentObject var tree: FileTreeStore
 
+    @State private var searchQuery = ""
+    @State private var caseSensitive = false
+    @State private var searchContents = true
+    @FocusState private var searchFocused: Bool
+
+    private var trimmedQuery: String {
+        searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool { !trimmedQuery.isEmpty }
+
+    private func triggerSearch() {
+        tree.runSearch(query: searchQuery, caseSensitive: caseSensitive, includeContents: searchContents)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
@@ -64,15 +79,193 @@ struct FileTreeView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            searchBar
             Divider()
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    DirectoryRow(url: tree.root, depth: 0, alwaysExpanded: true)
+                if isSearching {
+                    SearchResultsList()
+                        .padding(.vertical, 4)
+                } else {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        DirectoryRow(url: tree.root, depth: 0, alwaysExpanded: true)
+                    }
+                    .padding(.vertical, 4)
                 }
-                .padding(.vertical, 4)
             }
         }
         .background(Color(NSColor.windowBackgroundColor))
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            TextField("Search files", text: $searchQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .focused($searchFocused)
+                .onExitCommand { searchQuery = "" }
+                .onChange(of: searchQuery) { _, _ in triggerSearch() }
+                .onChange(of: caseSensitive) { _, _ in triggerSearch() }
+                .onChange(of: searchContents) { _, _ in triggerSearch() }
+            if tree.searchInProgress {
+                ProgressView()
+                    .controlSize(.mini)
+            }
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                    searchFocused = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear")
+            }
+            toggleButton(
+                label: "Aa",
+                on: caseSensitive,
+                help: caseSensitive ? "Match case: on" : "Match case: off"
+            ) { caseSensitive.toggle() }
+            toggleButton(
+                systemImage: "text.magnifyingglass",
+                on: searchContents,
+                help: searchContents ? "Searching file contents" : "Searching names only"
+            ) { searchContents.toggle() }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.primary.opacity(0.06))
+        )
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private func toggleButton(
+        label: String? = nil,
+        systemImage: String? = nil,
+        on: Bool,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Group {
+                if let label {
+                    Text(label).font(.system(size: 11, weight: .semibold))
+                } else if let systemImage {
+                    Image(systemName: systemImage).font(.system(size: 11, weight: .semibold))
+                }
+            }
+            .foregroundColor(on ? .accentColor : .secondary)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(on ? Color.accentColor.opacity(0.18) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+}
+
+struct SearchResultsList: View {
+    @EnvironmentObject var tree: FileTreeStore
+
+    var body: some View {
+        let matches = tree.searchHits
+        LazyVStack(alignment: .leading, spacing: 0) {
+            if matches.isEmpty {
+                Text(tree.searchInProgress ? "Searching\u{2026}" : "No matches")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            } else {
+                ForEach(matches, id: \.id) { hit in
+                    SearchResultRow(hit: hit)
+                }
+            }
+        }
+    }
+}
+
+struct SearchResultRow: View {
+    @EnvironmentObject var store: DocumentStore
+    @EnvironmentObject var tree: FileTreeStore
+    @EnvironmentObject var settings: JotSettings
+    let hit: SearchHit
+
+    private var url: URL { hit.url }
+
+    var isActive: Bool {
+        store.activeDocument?.fileURL == url
+    }
+
+    private var relativeParent: String {
+        let root = tree.root.path
+        let parent = url.deletingLastPathComponent().path
+        if parent == root { return "" }
+        if parent.hasPrefix(root + "/") {
+            return String(parent.dropFirst(root.count + 1))
+        }
+        return parent
+    }
+
+    var body: some View {
+        Button(action: { store.openFile(at: url) }) {
+            HStack(spacing: 5) {
+                Image(systemName: "doc")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 14, alignment: .center)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(url.lastPathComponent)
+                        .font(.system(size: 12))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let snippet = hit.snippet {
+                        Text(snippet)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    } else if !relativeParent.isEmpty {
+                        Text(relativeParent)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.leading, 12)
+            .padding(.vertical, 3)
+            .padding(.trailing, 8)
+            .background(isActive ? Color.accentColor.opacity(0.18) : Color.clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(url.path)
+        .contextMenu {
+            Button("Copy Path") {
+                FileTreeAction.copyPath(url, settings: settings)
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+            Divider()
+            Button("Move to Trash", role: .destructive) {
+                FileTreeAction.confirmAndDelete(url, isDirectory: false, store: store, tree: tree)
+            }
+        }
     }
 }
 
