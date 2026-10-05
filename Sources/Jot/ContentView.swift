@@ -172,7 +172,10 @@ struct PrincipalTitle: View {
 
     var body: some View {
         if let doc = store.activeDocument {
-            EditableTitle(doc: doc)
+            HStack(spacing: 8) {
+                EditableTitle(doc: doc)
+                ModifiedTimestamp(doc: doc)
+            }
         } else {
             Text("Jot")
                 .font(.system(.body, design: .rounded).weight(.semibold))
@@ -182,6 +185,43 @@ struct PrincipalTitle: View {
                 .frame(maxWidth: 360)
         }
     }
+}
+
+/// A subtle "Edited <relative time>" label shown next to the title. Refreshes
+/// itself every 30s so the relative phrasing stays current.
+struct ModifiedTimestamp: View {
+    @ObservedObject var doc: EditorDocument
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+
+    var body: some View {
+        if let modified = doc.modifiedAt {
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                Text("Edited \(label(for: modified, now: context.date))")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .help("Last modified \(Self.absoluteFormatter.string(from: modified))")
+            }
+        }
+    }
+
+    private func label(for date: Date, now: Date) -> String {
+        if now.timeIntervalSince(date) < 10 { return "just now" }
+        return Self.relativeFormatter.localizedString(for: date, relativeTo: now)
+    }
+
+    private static let absoluteFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
 }
 
 struct EditableTitle: View {
