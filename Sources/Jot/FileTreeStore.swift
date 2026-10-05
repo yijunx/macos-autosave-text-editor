@@ -90,7 +90,14 @@ final class FileTreeStore: ObservableObject {
                 }
                 return lhs.lastPathComponent.localizedCaseInsensitiveCompare(rhs.lastPathComponent) == .orderedAscending
             }
-            .map { FileNode(url: $0, isDirectory: Self.isDirectory($0)) }
+            .map { url in
+                let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                return FileNode(
+                    url: url,
+                    isDirectory: Self.isDirectory(url),
+                    modified: values?.contentModificationDate
+                )
+            }
     }
 
     /// Returns true if `url` is a file type the tree displays.
@@ -216,6 +223,7 @@ struct SearchHit: Identifiable, Hashable {
 struct FileNode: Identifiable, Hashable {
     let url: URL
     let isDirectory: Bool
+    var modified: Date? = nil
     var id: String { url.path }
     var displayName: String {
         isDirectory ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent

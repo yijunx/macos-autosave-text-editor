@@ -1,6 +1,27 @@
 import SwiftUI
 import AppKit
 
+/// Maps a file's modification age to a color so the tree reads as a heat map:
+/// freshly-edited files glow green and fade toward neutral gray as they age.
+enum Freshness {
+    // Fresh (just edited) and stale (~weeks old) endpoints, blended by age.
+    private static let fresh = (r: 0.22, g: 0.78, b: 0.45)
+    private static let stale = (r: 0.55, g: 0.55, b: 0.58)
+
+    static func color(for date: Date?, now: Date = Date()) -> Color {
+        guard let date else { return .secondary }
+        let hours = max(0, now.timeIntervalSince(date)) / 3600
+        // Log scale so the first hours/days carry most of the change; reaches
+        // fully "stale" at ~30 days.
+        let t = min(1, log2(hours + 1) / log2(24 * 30 + 1))
+        return Color(
+            red: fresh.r + (stale.r - fresh.r) * t,
+            green: fresh.g + (stale.g - fresh.g) * t,
+            blue: fresh.b + (stale.b - fresh.b) * t
+        )
+    }
+}
+
 enum FileTreeAction {
     /// Copy `url`, formatted per the user's setting, to the pasteboard.
     static func copyPath(_ url: URL, settings: JotSettings) {
@@ -208,6 +229,10 @@ struct SearchResultRow: View {
         store.activeDocument?.fileURL == url
     }
 
+    private var modified: Date? {
+        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
+
     private var relativeParent: String {
         let root = tree.root.path
         let parent = url.deletingLastPathComponent().path
@@ -228,6 +253,7 @@ struct SearchResultRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(url.lastPathComponent)
                         .font(.system(size: 12))
+                        .foregroundColor(Freshness.color(for: modified))
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if let snippet = hit.snippet {
@@ -327,7 +353,7 @@ struct DirectoryRow: View {
                     if node.isDirectory {
                         DirectoryRow(url: node.url, depth: depth + (alwaysExpanded ? 0 : 1))
                     } else {
-                        FileRow(url: node.url, depth: depth + (alwaysExpanded ? 0 : 1))
+                        FileRow(url: node.url, modified: node.modified, depth: depth + (alwaysExpanded ? 0 : 1))
                     }
                 }
             }
@@ -340,6 +366,7 @@ struct FileRow: View {
     @EnvironmentObject var tree: FileTreeStore
     @EnvironmentObject var settings: JotSettings
     let url: URL
+    var modified: Date? = nil
     let depth: Int
 
     var isActive: Bool {
@@ -379,6 +406,7 @@ struct FileRow: View {
                     .frame(width: 14, alignment: .center)
                 Text(url.lastPathComponent)
                     .font(.system(size: 12))
+                    .foregroundColor(Freshness.color(for: modified))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()

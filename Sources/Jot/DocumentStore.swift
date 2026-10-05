@@ -154,9 +154,15 @@ final class EditorDocument: ObservableObject, Identifiable {
     @Published var displayName: String = "Untitled"
     @Published var fileURL: URL? = nil {
         didSet {
-            if oldValue != fileURL { restartWatcher() }
+            if oldValue != fileURL {
+                restartWatcher()
+                refreshModifiedDate()
+            }
         }
     }
+    /// Last time the backing file was written, used to show "Edited …" beside
+    /// the title. `nil` for an unsaved document.
+    @Published var modifiedAt: Date? = nil
     @Published var scrollFraction: CGFloat = 0
     @Published var contentsOnly: Bool = false
     private var pendingName: String? = nil
@@ -176,6 +182,17 @@ final class EditorDocument: ObservableObject, Identifiable {
     func loadContent(_ newContent: String) {
         savedContent = newContent
         content = newContent
+    }
+
+    /// Read the backing file's modification date off disk and publish it.
+    private func refreshModifiedDate() {
+        guard let url = fileURL,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let date = attrs[.modificationDate] as? Date else {
+            modifiedAt = nil
+            return
+        }
+        modifiedAt = date
     }
 
     deinit {
@@ -212,6 +229,7 @@ final class EditorDocument: ObservableObject, Identifiable {
         // Atomic writes (ours and others) replace the inode, so we need to
         // rewire the watcher onto the new file regardless of who wrote it.
         defer { restartWatcher() }
+        refreshModifiedDate()
 
         if let last = lastSelfWriteAt, Date().timeIntervalSince(last) < 0.5 {
             // Our own save just landed — nothing to reload.
@@ -267,6 +285,7 @@ final class EditorDocument: ObservableObject, Identifiable {
         do {
             try content.write(to: url, atomically: true, encoding: .utf8)
             lastSelfWriteAt = Date()
+            modifiedAt = lastSelfWriteAt
             savedContent = content
             if didCreate {
                 NotificationCenter.default.post(name: .jotFilesChanged, object: nil)
